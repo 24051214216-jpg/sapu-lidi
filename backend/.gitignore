@@ -1,6 +1,13 @@
+
 node_modules/
 .env
-logs/*.log
-uploads/*
-!uploads/.gitkeep
+.env.*
+!.env.example
+
+logs/*
+!logs/.gitkeep
+
 coverage/
+.nyc_output/
+.DS_Store
+Thumbs.db
