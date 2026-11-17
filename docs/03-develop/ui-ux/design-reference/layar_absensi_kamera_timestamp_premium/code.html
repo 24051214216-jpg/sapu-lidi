@@ -1,0 +1,178 @@
+<!DOCTYPE html><html lang="id"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport">
+<title>Layar Absensi Kamera Timestamp - SapuLidi SuperApp</title>
+<!-- Tailwind CSS CDN with Forms & Container Plugins -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Google Fonts: Plus Jakarta Sans -->
+<link href="https://fonts.googleapis.com" rel="preconnect">
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap" rel="stylesheet">
+<!-- FontAwesome Icons -->
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<script data-purpose="tailwind-config">
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Plus Jakarta Sans', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            brand: {
+              orange: '#FF7A00',
+              amber: '#FFB800',
+              emerald: '#10B981',
+            }
+          },
+          boxShadow: {
+            'shutter': '0 0 25px rgba(255, 122, 0, 0.45)',
+            'glass': '0 8px 32px 0 rgba(0, 0, 0, 0.37)'
+          }
+        }
+      }
+    };
+  </script>
+<!-- BEGIN: Custom Glassmorphism Styles -->
+<style data-purpose="glass-effects">
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.72);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+    }
+    .glass-btn {
+      background: rgba(15, 23, 42, 0.55);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+    }
+    .glass-btn:active {
+      background: rgba(255, 255, 255, 0.2);
+      transform: scale(0.95);
+    }
+    .watermark-badge {
+      background: linear-gradient(135deg, rgba(255, 122, 0, 0.25) 0%, rgba(255, 184, 0, 0.15) 100%);
+      border: 1px solid rgba(255, 184, 0, 0.4);
+    }
+  </style>
+<!-- END: Custom Glassmorphism Styles -->
+<style data-purpose="animations">
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
+    }
+    .animate-gps-pulse {
+      animation: pulse-dot 1.8s ease-in-out infinite;
+    }
+  </style>
+</head>
+<body class="bg-black text-white font-sans antialiased overflow-hidden select-none m-0 p-0 flex justify-center items-center min-h-screen">
+<!-- BEGIN: Mobile Device Frame -->
+<main class="relative w-full max-w-[430px] h-[100dvh] max-h-[932px] overflow-hidden shadow-2xl flex flex-col justify-between bg-neutral-900" data-purpose="camera-viewfinder-screen">
+<!-- Camera Feed Background Image -->
+<img alt="Latar Belakang Siaran Langsung Kamera Absensi Gotong Royong" class="absolute inset-0 w-full h-full object-cover object-center pointer-events-none z-0" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDucWcIb-5N_zwhFT3eomd6AhJ3romppiJpil5TqJSKx3HApe9DVkR8dcGm0ww6nsPMOb6Cc4E3U1PPZi5bOXrX3dEJRbXPvFz7OZMglKEd_S3ROwxwxLKrxzYJ7SOVU-sX5DfwwpqbRNPQCG46i1m6sSLA9GzdQsRyp3CVPwewcX8SjvbXoiQ7eN1LtnuX1cqbMC-lrGqOtsh7YTqbMWO7O7vSGeFsWtPefcZM9Ojk">
+<!-- Camera Grid Lines (Subtle Rule of Thirds Guide) -->
+<div class="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none z-10 opacity-15">
+<div class="border-r border-b border-white"></div>
+<div class="border-r border-b border-white"></div>
+<div class="border-b border-white"></div>
+<div class="border-r border-b border-white"></div>
+<div class="border-r border-b border-white"></div>
+<div class="border-b border-white"></div>
+<div class="border-r border-white"></div>
+<div class="border-r border-white"></div>
+<div></div>
+</div>
+<!-- Top & Bottom Lighting Vignette Overlays -->
+<div class="absolute top-0 inset-x-0 h-36 bg-gradient-to-b from-black/80 via-black/40 to-transparent pointer-events-none z-10"></div>
+<div class="absolute bottom-0 inset-x-0 h-48 bg-gradient-to-t from-black/90 via-black/50 to-transparent pointer-events-none z-10"></div>
+<!-- BEGIN: Top Section -->
+<header class="relative z-20 pt-3 px-4 flex flex-col gap-3" data-purpose="top-header-navigation">
+<!-- iOS Virtual Status Bar -->
+<div class="flex justify-between items-center text-xs font-semibold px-2 text-white/90">
+<span>07:15</span>
+<div class="flex items-center space-x-1.5 text-xs">
+<i class="fa-solid fa-signal text-[11px]"></i>
+<span class="text-[10px] font-bold">5G</span>
+<i class="fa-solid fa-wifi text-[11px]"></i>
+<i class="fa-solid fa-battery-full text-sm"></i>
+</div>
+</div>
+<!-- Top Action Navigation Bar -->
+<nav class="flex items-center justify-between mt-1">
+<!-- Back Button -->
+<button aria-label="Kembali ke Dashboard" class="w-10 h-10 rounded-full glass-btn flex items-center justify-center text-white text-base transition-all">
+<i class="fa-solid fa-arrow-left"></i>
+</button>
+<!-- Screen Title Badge -->
+<div class="px-3.5 py-1.5 rounded-full glass-btn flex items-center gap-2 border border-white/20">
+<i class="fa-solid fa-camera-viewfinder text-brand-amber text-xs"></i>
+<h1 class="text-xs font-semibold tracking-wide text-white">Absensi Kehadiran Warga</h1>
+</div>
+<!-- Right Quick Controls (Flash & Flip) -->
+<div class="flex items-center gap-2">
+<!-- Flash Toggle -->
+<button aria-label="Nyalakan Flash" class="w-10 h-10 rounded-full glass-btn flex items-center justify-center text-white/90 hover:text-brand-amber transition-colors">
+<i class="fa-solid fa-bolt text-sm"></i>
+</button>
+<!-- Flip Camera Toggle -->
+<button aria-label="Ganti Kamera" class="w-10 h-10 rounded-full glass-btn flex items-center justify-center text-white/90 hover:text-brand-orange transition-colors">
+<i class="fa-solid fa-camera-rotate text-sm"></i>
+</button>
+</div>
+</nav>
+<!-- GPS & Network Accuracy Badge -->
+<div class="flex justify-end items-center pr-1 mt-0.5"><div class="inline-flex items-center gap-2 px-3 py-1 rounded-full glass-panel text-[11px] font-semibold border border-emerald-400/40 text-emerald-300 shadow-sm backdrop-blur-md"><span class="w-2 h-2 rounded-full bg-emerald-400 animate-gps-pulse shadow-[0_0_8px_#34d399]"></span><span>GPS Akurat (±3m) • Real-time Geo-tagging</span></div></div>
+</header>
+<!-- END: Top Section -->
+<!-- BEGIN: Center Viewfinder Reticle -->
+<section class="relative z-10 flex-1 flex items-center justify-center pointer-events-none" data-purpose="face-detection-target"><div class="w-52 h-52 border border-white/25 rounded-3xl relative flex flex-col items-center justify-between p-3"><div class="absolute -top-0.5 -left-0.5 w-5 h-5 border-t-2 border-l-2 border-emerald-400 rounded-tl shadow-[0_0_8px_rgba(52,211,153,0.5)]"></div><div class="absolute -top-0.5 -right-0.5 w-5 h-5 border-t-2 border-r-2 border-emerald-400 rounded-tr shadow-[0_0_8px_rgba(52,211,153,0.5)]"></div><div class="absolute -bottom-0.5 -left-0.5 w-5 h-5 border-b-2 border-l-2 border-emerald-400 rounded-bl shadow-[0_0_8px_rgba(52,211,153,0.5)]"></div><div class="absolute -bottom-0.5 -right-0.5 w-5 h-5 border-b-2 border-r-2 border-emerald-400 rounded-br shadow-[0_0_8px_rgba(52,211,153,0.5)]"></div><div class="w-full flex justify-between items-center text-[10px] text-emerald-300 font-mono"><span>SCAN: 99.4%</span><i class="fa-solid fa-wifi text-[9px] opacity-75"></i></div><span class="text-[11px] tracking-wider font-semibold text-white bg-black/60 backdrop-blur-md px-3 py-1 rounded-full border border-white/20 uppercase flex items-center gap-1.5 shadow-md"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>Wajah Terdeteksi • Bambang Wijaya</span><div class="w-full flex justify-center"><div class="w-8 h-0.5 bg-emerald-400/50 rounded-full"></div></div></div></section>
+<!-- END: Center Viewfinder Reticle -->
+<!-- BEGIN: Bottom Section (Timestamp Overlay Card & Shutter Controls) -->
+<footer class="relative z-20 px-4 pb-6 flex flex-col gap-4" data-purpose="camera-timestamp-and-controls">
+<!-- Frosted Glass Real-Time Timestamp Card -->
+<article class="glass-panel shadow-glass rounded-2xl p-3.5 flex flex-col gap-2.5 relative overflow-hidden" data-purpose="attendance-timestamp-overlay"><div class="flex items-center justify-between border-b border-white/15 pb-2"><div class="flex items-center gap-2"><span class="w-5 h-5 rounded-md bg-emerald-600 flex items-center justify-center text-[10px] font-black text-white shadow-sm"><i class="fa-solid fa-broom"></i></span><span class="font-extrabold tracking-wide text-xs text-white uppercase">SapuLidi <span class="text-emerald-400 font-semibold">Verify</span></span></div><div class="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-[10px] font-bold text-emerald-300 tracking-wider flex items-center gap-1.5 border border-emerald-400/40"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span><span>E-ABSENSI SAH #SL-7782</span></div></div><div class="flex items-baseline justify-between"><div class="flex items-center gap-2"><span class="font-mono text-2xl font-black text-emerald-400 tracking-tight drop-shadow-[0_2px_8px_rgba(52,211,153,0.6)]">07:15:22</span><span class="text-xs font-bold text-emerald-300/90 tracking-wider">WIB</span></div><div class="text-xs font-semibold text-neutral-200">Minggu, 17 Nov 2024</div></div><div class="bg-white/10 rounded-xl px-2.5 py-1.5 flex items-center gap-2 border border-white/10"><i class="fa-solid fa-people-carry-box text-brand-orange text-xs"></i><div class="flex flex-col truncate"><span class="text-[10px] text-brand-amber font-semibold leading-none">Kegiatan Terjadwal</span><span class="text-xs font-bold text-white truncate">Kerja Bakti Bersih Selokan &amp; Fogging Nyamuk</span></div></div><div class="space-y-1 text-[11px] text-neutral-200"><div class="flex items-start gap-1.5"><i class="fa-solid fa-location-dot text-brand-amber mt-0.5 text-xs"></i><span class="font-medium text-white/95 leading-tight">RT 05 / RW 08, Menteng Asri, Jakarta Pusat</span></div><div class="flex items-center justify-between text-[10px] text-neutral-300 pl-4 font-mono"><span>-6.1944° S, 106.8229° E</span><span class="text-emerald-300 font-sans font-semibold">Akurasi: ±3 meter</span></div></div><div class="pt-2 border-t border-white/15 flex items-center justify-between text-xs"><div class="flex items-center gap-2"><div class="w-6 h-6 rounded-full bg-brand-orange/30 border border-brand-orange/60 flex items-center justify-center text-[10px] text-brand-amber font-bold">BW</div><div class="flex flex-col leading-tight"><span class="font-bold text-white tracking-wide">Bambang Wijaya</span><span class="text-[10px] text-white/70">Warga Terverifikasi</span></div></div><span class="text-[11px] font-semibold text-neutral-200 bg-white/15 px-2.5 py-0.5 rounded-md border border-white/15 font-mono">Blok B3 / 12</span></div></article>
+<!-- Camera Shutter and Bottom Function Bar -->
+<section class="flex items-center justify-around pt-1 px-2" data-purpose="shutter-controls-bar"><button aria-label="Buka Galeri Foto Terakhir" class="relative flex flex-col items-center gap-1 group"><div class="w-12 h-12 rounded-xl overflow-hidden glass-btn p-0.5 transition-transform group-hover:scale-105 active:scale-95 shadow-md border border-white/30"><img alt="Thumbnail Hasil Foto Sebelumnya" class="w-full h-full object-cover rounded-lg" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDucWcIb-5N_zwhFT3eomd6AhJ3romppiJpil5TqJSKx3HApe9DVkR8dcGm0ww6nsPMOb6Cc4E3U1PPZi5bOXrX3dEJRbXPvFz7OZMglKEd_S3ROwxwxLKrxzYJ7SOVU-sX5DfwwpqbRNPQCG46i1m6sSLA9GzdQsRyp3CVPwewcX8SjvbXoiQ7eN1LtnuX1cqbMC-lrGqOtsh7YTqbMWO7O7vSGeFsWtPefcZM9Ojk"></div><span class="text-[10px] font-medium text-neutral-300 tracking-tight">Galeri</span></button><button aria-label="Ambil Foto Absensi Sekarang" class="relative w-20 h-20 rounded-full border-4 border-white/95 p-1 flex items-center justify-center transition-all duration-150 transform hover:scale-105 active:scale-90 shadow-[0_0_25px_rgba(16,185,129,0.55)]" id="shutter-button"><div class="w-full h-full bg-gradient-to-tr from-[#006130] via-[#107C41] to-[#10B981] rounded-full flex items-center justify-center shadow-inner"><i class="fa-solid fa-camera text-white text-xl drop-shadow"></i></div></button><button aria-label="Mode Bantuan Deteksi Wajah" class="flex flex-col items-center gap-1 group"><div class="w-12 h-12 rounded-full glass-btn flex items-center justify-center text-white/90 transition-transform group-hover:scale-105 active:scale-95 shadow-md border border-white/30"><i class="fa-solid fa-face-smile text-lg text-brand-amber"></i></div><span class="text-[10px] font-medium text-neutral-300 tracking-tight">Panduan</span></button></section>
+<!-- Bottom Home Indicator Bar (iOS style) -->
+<div class="w-32 h-1 bg-white/50 rounded-full mx-auto mt-1"></div>
+</footer>
+<!-- END: Bottom Section -->
+</main>
+<!-- END: Mobile Device Frame -->
+<!-- BEGIN: Interactive Simulation Script -->
+<script data-purpose="realtime-clock-update">
+    // Simulating running live digital clock matching Indonesia Time (WIB)
+    document.addEventListener("DOMContentLoaded", () => {
+      const clockElement = document.querySelector('[data-purpose="attendance-timestamp-overlay"] .font-mono');
+      if (clockElement) {
+        setInterval(() => {
+          const now = new Date();
+          const hours = String(now.getHours()).padStart(2, '0');
+          const minutes = String(now.getMinutes()).padStart(2, '0');
+          const seconds = String(now.getSeconds()).padStart(2, '0');
+          clockElement.textContent = `${hours}:${minutes}:${seconds}`;
+        }, 1000);
+      }
+
+      // Shutter Click Feedback Animation
+      const shutterBtn = document.getElementById("shutter-button");
+      if (shutterBtn) {
+        shutterBtn.addEventListener("click", () => {
+          // Camera Flash Effect
+          const flashDiv = document.createElement("div");
+          flashDiv.className = "fixed inset-0 bg-white z-50 pointer-events-none transition-opacity duration-300 opacity-90";
+          document.body.appendChild(flashDiv);
+          setTimeout(() => {
+            flashDiv.classList.add("opacity-0");
+            setTimeout(() => flashDiv.remove(), 300);
+          }, 60);
+        });
+      }
+    });
+  </script>
+<!-- END: Interactive Simulation Script -->
+
+
+</body></html>

@@ -1,0 +1,480 @@
+<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"><meta content="mobile_tab" name="shell-type"><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"><link href="https://fonts.googleapis.com" rel="preconnect"><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Plus+Jakarta+Sans:wght@500;600;700;800&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"><style>@layer base{html,body{width:100%;margin:0;padding:0;background-color:#faf8ff;}body{overscroll-behavior-y:none;-webkit-tap-highlight-color:transparent;}.pb-safe{padding-bottom:env(safe-area-inset-bottom,0px);}.pt-safe{padding-top:env(safe-area-inset-top,0px);}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config = { darkMode: "class", theme: { extend: { "colors": { "tertiary": "#005988", "surface-variant": "#dae2fd", "on-secondary-fixed": "#321200", "on-surface-variant": "#3f4940", "surface-container-high": "#e2e7ff", "tertiary-fixed-dim": "#93ccff", "primary-container": "#107c41", "secondary": "#994700", "inverse-on-surface": "#eef0ff", "on-primary-container": "#b6ffc5", "surface-container": "#eaedff", "on-primary-fixed-variant": "#005228", "on-secondary-container": "#592600", "on-secondary": "#ffffff", "surface-container-low": "#f2f3ff", "on-tertiary-container": "#e4f0ff", "on-surface": "#131b2e", "surface-tint": "#006d37", "secondary-fixed-dim": "#ffb68b", "primary-fixed": "#96f7af", "secondary-container": "#fb7800", "error-container": "#ffdad6", "outline": "#6f7a6f", "outline-variant": "#becabd", "tertiary-fixed": "#cce5ff", "on-tertiary": "#ffffff", "inverse-surface": "#283044", "primary-fixed-dim": "#7ada95", "on-background": "#131b2e", "on-error-container": "#93000a", "tertiary-container": "#0072ad", "surface-dim": "#d2d9f4", "inverse-primary": "#7ada95", "error": "#ba1a1a", "on-secondary-fixed-variant": "#753400", "secondary-fixed": "#ffdbc8", "surface-bright": "#faf8ff", "on-primary": "#ffffff", "background": "#faf8ff", "on-error": "#ffffff", "surface": "#faf8ff", "surface-container-highest": "#dae2fd", "surface-container-lowest": "#ffffff", "on-tertiary-fixed": "#001d31", "primary": "#006130", "on-primary-fixed": "#00210c", "on-tertiary-fixed-variant": "#004b73" }, "borderRadius": { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" }, "spacing": { "space-lg": "1.25rem", "space-sm": "0.5rem", "margin-tablet": "1.5rem", "margin": "1rem", "space-xl": "1.5rem", "gutter-sm": "0.75rem", "space-2xl": "2rem", "space-xs": "0.25rem", "gutter": "1rem", "space-md": "1rem", "margin-desktop": "2rem" }, "fontFamily": { "label-lg": ["Inter"], "display-lg-mobile": ["Plus Jakarta Sans"], "headline-sm": ["Plus Jakarta Sans"], "label-sm": ["Inter"], "label-md": ["Inter"], "headline-lg": ["Plus Jakarta Sans"], "body-sm": ["Plus Jakarta Sans"], "display-lg": ["Plus Jakarta Sans"], "body-lg": ["Plus Jakarta Sans"], "headline-md": ["Plus Jakarta Sans"], "body-md": ["Plus Jakarta Sans"] }, "fontSize": { "label-lg": ["14px", {"lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "600"}], "display-lg-mobile": ["26px", {"lineHeight": "34px", "letterSpacing": "-0.02em", "fontWeight": "800"}], "headline-sm": ["18px", {"lineHeight": "24px", "fontWeight": "600"}], "label-sm": ["10px", {"lineHeight": "14px", "letterSpacing": "0.05em", "fontWeight": "700"}], "label-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "600"}], "headline-lg": ["24px", {"lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "700"}], "body-sm": ["12px", {"lineHeight": "16px", "fontWeight": "400"}], "display-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "800"}], "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}], "headline-md": ["20px", {"lineHeight": "28px", "letterSpacing": "-0.01em", "fontWeight": "700"}], "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}] } } } };</script><style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+</head><body class="bg-surface font-body-md text-on-surface flex flex-col min-h-screen"><header class="fixed top-0 w-full z-50 pt-safe bg-surface/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="h-16 px-margin flex items-center justify-between"><div class="flex items-center gap-space-sm"><img alt="SapuLidi Logo" class="h-8 w-auto object-contain" src="https://lh3.googleusercontent.com/aida/ALJJyrB1JdJnlcYISCH6ryUtvd3Fjq9U6wEQRZ7t60zc7ZIfi95H5VR985JcwjrQHY-N9Azdg125QKhq7l6AT9vcsXRVb0aZxF5oO9j1dVntmCs7Rk6Eq4Y_7wkRidTTbZg4eK1HSOzJy99s5cK7Y6NgUO-iL-5gUD3Q7e5y4FU-eJTZKatfOIZ6_SS1RjpA4BfQaK8oiD3fZ14Yck5KwmPEqvzgCnD2vEFzXt5LokcvNhlGCg"><span class="font-headline-sm text-headline-sm text-primary font-bold tracking-tight">SapuLidi</span><span class="h-4 w-[1.5px] bg-outline-variant/50 mx-1"></span><span class="font-body-md text-body-md text-on-surface-variant font-medium">Berita &amp; Pengumuman</span></div><div class="flex items-center gap-space-xs"><button aria-label="Notifikasi Warga" class="w-11 h-11 flex items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container-high transition-colors"><span class="material-symbols-outlined text-[24px]">notifications</span></button><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></header><main class="flex flex-col relative w-full pt-16 pb-24 bg-surface min-h-screen"><div class="flex flex-col w-full pb-8">
+<!-- Search & Search Utilities -->
+<section class="px-margin pt-space-md flex flex-col gap-space-sm">
+<div class="relative w-full">
+<div class="absolute inset-y-0 left-0 pl-space-md flex items-center pointer-events-none text-on-surface-variant">
+<span class="material-symbols-outlined text-[20px]">search</span>
+</div>
+<input class="w-full h-12 pl-11 pr-11 bg-surface-container-lowest text-on-surface rounded-full text-body-md font-body-md shadow-sm placeholder:text-outline focus:outline-none transition-all" id="searchWartaInput" placeholder="Cari warta warga, edaran RT, bansos..." type="search">
+<button aria-label="Bersihkan pencarian" class="absolute inset-y-0 right-0 pr-space-md flex items-center text-outline hover:text-on-surface transition-colors hidden" id="clearSearchBtn" type="button">
+<span class="material-symbols-outlined text-[18px]">cancel</span>
+</button>
+</div>
+<!-- Scrollable Filter Chips -->
+<div class="flex items-center gap-space-xs overflow-x-auto no-scrollbar py-1 -mx-margin px-margin" id="filterPillsContainer">
+<button class="filter-pill shrink-0 px-3.5 py-1.5 rounded-full text-label-md font-label-md bg-primary text-on-primary shadow-sm transition-all" data-category="all">
+        Semua (8)
+      </button>
+<button class="filter-pill shrink-0 px-3.5 py-1.5 rounded-full text-label-md font-label-md bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-high transition-all" data-category="rt">
+        Pengumuman RT
+      </button>
+<button class="filter-pill shrink-0 px-3.5 py-1.5 rounded-full text-label-md font-label-md bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-high transition-all" data-category="kerja-bakti">
+        Kerja Bakti
+      </button>
+<button class="filter-pill shrink-0 px-3.5 py-1.5 rounded-full text-label-md font-label-md bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-high transition-all" data-category="keamanan">
+        Keamanan
+      </button>
+<button class="filter-pill shrink-0 px-3.5 py-1.5 rounded-full text-label-md font-label-md bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-high transition-all" data-category="sosial">
+        Kabar Duka &amp; Sosial
+      </button>
+<button class="filter-pill shrink-0 px-3.5 py-1.5 rounded-full text-label-md font-label-md bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-high transition-all" data-category="tips">
+        Tips Warga
+      </button>
+</div>
+</section>
+<!-- Featured Announcement Headline Card -->
+<section class="px-margin mt-space-lg">
+<div class="relative bg-surface-container-lowest rounded-xl overflow-hidden shadow-md flex flex-col group cursor-pointer transition-transform active:scale-[0.99]">
+<!-- Image with overlay tags -->
+<div class="relative h-48 w-full overflow-hidden bg-surface-container">
+<img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" data-alt="Indonesian public health officer wearing blue protective overall and mask carrying a thermal fogging machine spraying dense white smoke along a neat paved residential alleyway in Jakarta during daylight, surrounded by tropical foliage, brick walls, and houses" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCciYYmyXTorGzsd3Whnbt9nothbFyz9l6FPA-TAAyt7Dt6oCPdFJyaMFPOS9TmDWMteIgQDAOLB7wZqWPQRlZp8FdmMzeUkmyBkXQ0H4E7V4dsnpK9o7jgGaM1nW3wJ5t2LFggsmlTIoJFOGsa6FCdfcQmhL8q1GiVt4zcM6lb3f4AWgkEg3mplAM8W8EpAKJYqo2199yXpMXtYhYfSYgjPIpq-1bidUEviesJMKK5">
+<div class="absolute inset-0 bg-gradient-to-t from-on-surface/90 via-on-surface/30 to-transparent"></div>
+<!-- Top Sticky Tags inside Hero -->
+<div class="absolute top-3 left-3 right-3 flex items-center justify-between">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary text-on-primary font-label-sm text-label-sm shadow-sm font-bold tracking-wide uppercase"><span class="material-symbols-outlined text-[14px]">campaign</span> PENGUMUMAN RESMI RT 05</span>
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-container-lowest/90 backdrop-blur-md text-primary font-label-sm text-label-sm shadow-sm font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-primary animate-ping"></span>
+            Mendesak
+          </span>
+</div>
+<!-- In-Hero Content Sub-Header -->
+<div class="absolute bottom-3 left-3 right-3 flex flex-col gap-1">
+<span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-error-container text-on-error-container font-label-sm text-label-sm w-fit font-bold shadow-sm">
+<span class="material-symbols-outlined text-[13px]">alarm</span>
+            Wajib Buka Pintu / Jendela Pukul 08.00 WIB
+          </span>
+</div>
+</div>
+<!-- Card Body Content -->
+<div class="p-space-md flex flex-col gap-space-xs bg-surface-container-lowest">
+<h2 class="font-headline-md text-headline-md text-on-surface line-clamp-2 leading-snug">
+          Penyemprotan Fogging Serentak &amp; Pemeriksaan Jentik Nyamuk DBD
+        </h2>
+<p class="font-body-md text-body-md text-on-surface-variant line-clamp-2">
+          Guna pencegahan siklus demam berdarah di musim penghujan, Sie Kesehatan RT 05 dan Puskesmas Kelurahan akan melaksanakan fogging terpadu dari Blok A hingga Blok D.
+        </p>
+<div class="flex items-center justify-between pt-space-xs text-on-surface-variant">
+<div class="flex items-center gap-1.5 text-label-sm font-label-sm">
+<span class="material-symbols-outlined text-[15px] text-primary">verified_user</span>
+<span>Pengurus RW 08 &amp; Sie Kesehatan</span>
+<span>•</span>
+<span>2 jam lalu</span>
+</div>
+<button class="w-8 h-8 rounded-full bg-surface-container-high flex items-center justify-center text-primary hover:bg-primary hover:text-on-primary transition-colors">
+<span class="material-symbols-outlined text-[18px]">share</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+<!-- Segmented Tab Switcher -->
+<section class="px-margin mt-space-xl">
+<div class="p-1 bg-surface-container-high rounded-xl flex items-center gap-1 shadow-inner">
+<button class="tab-trigger flex-1 py-2 px-3 rounded-lg text-center font-label-lg text-label-lg font-semibold bg-surface-container-lowest text-primary shadow-sm transition-all" id="tabInternal" onclick="switchNewsTab('internal')">
+        Pengumuman Internal RT <span class="ml-1 text-label-sm px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">3</span>
+</button>
+<button class="tab-trigger flex-1 py-2 px-3 rounded-lg text-center font-label-lg text-label-lg font-medium text-on-surface-variant hover:text-on-surface transition-all" id="tabWarta" onclick="switchNewsTab('warta')">
+        Warta Lingkungan <span class="ml-1 text-label-sm px-1.5 py-0.5 rounded-full bg-surface-container-highest text-on-surface-variant">5</span>
+</button>
+</div>
+</section>
+<!-- Feed Berita & Warta List Section -->
+<section class="px-margin mt-space-md flex flex-col gap-space-md" id="feedListContainer">
+<!-- Card 1: Keamanan Lingkungan (Portal RFID) -->
+<article class="feed-item bg-surface-container-lowest rounded-xl p-space-md shadow-sm hover:shadow-md transition-shadow cursor-pointer flex flex-col gap-space-sm" data-category="keamanan" data-type="internal">
+<div class="flex items-center justify-between">
+<span class="px-2.5 py-0.5 rounded-full bg-surface-container-highest text-primary font-label-sm text-label-sm font-bold flex items-center gap-1">
+<span class="material-symbols-outlined text-[13px]">shield</span>
+          Keamanan Lingkungan
+        </span>
+<span class="font-label-sm text-label-sm text-outline">Kemarin</span>
+</div>
+<div class="flex gap-space-md items-start">
+<div class="flex-1 flex flex-col gap-1 min-w-0">
+<h3 class="font-headline-sm text-headline-sm text-on-surface leading-snug line-clamp-2">
+            Hasil Rapat Evaluasi Portal Masuk: Penambahan Portal Otomatis RFID untuk Sepeda Motor
+          </h3>
+<p class="font-body-md text-body-md text-on-surface-variant line-clamp-2">
+            Mulai 1 Desember, portal gerbang timur menggunakan akses kartu tap guna meningkatkan keamanan dan mencegah lalu lalang kendaraan tak dikenal saat malam hari.
+          </p>
+</div>
+<div class="w-20 h-20 shrink-0 rounded-lg overflow-hidden bg-surface-container relative">
+<img class="w-full h-full object-cover" data-alt="Modern automatic security gate with RFID card scanner sensor in an Indonesian housing complex gate post, with guard post in the background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDb04Db4SzUnXRDWu4jNckt37Iz-N2M1ILVcGB19xWIO_kLkhviE_Ty6PF3q9nnd_K8mZXHiqazpUf5CeXVbgjxTUkttlYraS6Z7ayUqkfGELyETmhOJMFjKAPKI0CRxybVRkpBKMQpfbl5PuaewfEt1LiNgyvHYiLAVI4zQM2v3xaPkqZs9BBH0RW7v3XYJXats1IkUUSeXdbAT7J7fK568LecfcHV99LozAoGyXzA">
+</div>
+</div>
+<div class="flex items-center justify-between pt-1 border-t-0 text-on-surface-variant">
+<div class="flex items-center gap-3 text-label-sm font-label-sm">
+<span class="flex items-center gap-1 text-on-surface-variant">
+<span class="material-symbols-outlined text-[15px]">visibility</span>
+            42 Warga Membaca
+          </span>
+<span class="flex items-center gap-1 text-on-surface-variant">
+<span class="material-symbols-outlined text-[15px]">comment</span>
+            14 Diskusi
+          </span>
+</div>
+<span class="material-symbols-outlined text-primary text-[20px]">arrow_forward</span>
+</div>
+</article>
+<!-- Card 2: Kerja Bakti & Lingkungan (Selokan Sedimen) -->
+<article class="feed-item bg-surface-container-lowest rounded-xl p-space-md shadow-sm hover:shadow-md transition-shadow cursor-pointer flex flex-col gap-space-sm" data-category="kerja-bakti" data-type="internal">
+<div class="flex items-center justify-between">
+<span class="px-2.5 py-0.5 rounded-full bg-primary-fixed text-on-primary-fixed-variant font-label-sm text-label-sm font-bold flex items-center gap-1">
+<span class="material-symbols-outlined text-[13px]">cleaning_services</span>
+          Kerja Bakti &amp; Lingkungan
+        </span>
+<span class="font-label-sm text-label-sm text-outline">17 Nov 2024</span>
+</div>
+<div class="flex gap-space-md items-start">
+<div class="flex-1 flex flex-col gap-1 min-w-0">
+<h3 class="font-headline-sm text-headline-sm text-on-surface leading-snug line-clamp-2">
+            Laporan Bersih Selokan RW 08: 12 Karung Sedimen Lumpur Berhasil Diangkut
+          </h3>
+<p class="font-body-md text-body-md text-on-surface-variant line-clamp-2">
+            Terima kasih atas partisipasi bapak-bapak RT 05 pada gotong royong Minggu kemarin. Aliran gorong-gorong kini lancar mengantisipasi genangan hujan lebat.
+          </p>
+</div>
+<div class="w-20 h-20 shrink-0 rounded-lg overflow-hidden bg-surface-container relative">
+<img class="w-full h-full object-cover" data-alt="Group of diverse Indonesian neighborhood residents gotong royong cleaning open drainage canal smiling together with white mud bags stacked on sidewalk in tropical sunshine" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAj8n5XZANWZE1rI4_bevt1_FsmRZSRSo2JRmqPhioruhnPZ59Z6vrVpTW420cF-ao47TA6mANbsjWxTaSmYNIRFpNyVpmNq12gJ42XH5ZWvusgCpGOMVSjAQh10_iQEYeRXfddjFRQfXQhsIlpbWKyg5mBScTHRs2qaZkQT6eSVMAw4lI-DtcEDl4Mm6pbUeotJiaza1iyKHjjfxu0m2BHDvd3tDPKI-I1iDxXYkMa">
+</div>
+</div>
+<!-- Social Interaction Bar -->
+<div class="flex items-center justify-between pt-1">
+<div class="flex items-center gap-2">
+<button class="like-btn px-2.5 py-1 rounded-full bg-surface-container-high text-primary font-label-sm text-label-sm flex items-center gap-1 hover:bg-primary hover:text-on-primary transition-all">
+<span class="material-symbols-outlined text-[14px]">thumb_up</span>
+<span class="like-count">88</span> Dukungan
+          </button>
+<span class="font-label-sm text-label-sm text-outline">RT 05 Unggul</span>
+</div>
+<span class="material-symbols-outlined text-primary text-[20px]">arrow_forward</span>
+</div>
+</article>
+<!-- Card 3: Bansos & Layanan (Penyaluran Beras) -->
+<article class="feed-item bg-surface-container-lowest rounded-xl p-space-md shadow-sm hover:shadow-md transition-shadow cursor-pointer flex flex-col gap-space-sm" data-category="sosial" data-type="internal">
+<div class="flex items-center justify-between">
+<span class="px-2.5 py-0.5 rounded-full bg-primary-fixed text-on-primary-fixed-variant font-label-sm text-label-sm font-bold flex items-center gap-1"><span class="material-symbols-outlined text-[13px]">volunteer_activism</span> Bansos &amp; Layanan</span>
+<span class="font-label-sm text-label-sm text-outline">14 Nov 2024</span>
+</div>
+<div class="flex flex-col gap-1">
+<h3 class="font-headline-sm text-headline-sm text-on-surface leading-snug">
+          Penyaluran Bantuan Beras Cadangan Pangan Nasional untuk 18 KK Terdaftar
+        </h3>
+<p class="font-body-md text-body-md text-on-surface-variant line-clamp-2">
+          Warga penerima manfaat dimohon membawa KTP &amp; Kartu Keluarga asli saat pengambilan di Balai Warga mulai pukul 09.00 - 15.00 WIB.
+        </p>
+</div>
+<!-- Quick Location Badge -->
+<div class="flex items-center gap-2 p-2 rounded-lg bg-surface-container-low text-on-surface">
+<span class="material-symbols-outlined text-primary text-[18px]">location_on</span>
+<span class="font-label-md text-label-md font-medium">Balai Warga RT 05 / RW 08 (Pos Ronda Utama)</span>
+</div>
+<div class="flex items-center justify-between pt-1 text-on-surface-variant">
+<span class="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px] text-primary">task_alt</span>
+          Status: Sedang Berlangsung
+        </span>
+<span class="material-symbols-outlined text-primary text-[20px]">arrow_forward</span>
+</div>
+</article>
+<!-- Card 4: Tips Warga & Ekstra Lingkungan -->
+<article class="feed-item bg-surface-container-lowest rounded-xl p-space-md shadow-sm hover:shadow-md transition-shadow cursor-pointer flex flex-col gap-space-sm" data-category="tips" data-type="warta">
+<div class="flex items-center justify-between">
+<span class="px-2.5 py-0.5 rounded-full bg-tertiary-fixed text-on-tertiary-fixed-variant font-label-sm text-label-sm font-bold flex items-center gap-1">
+<span class="material-symbols-outlined text-[13px]">eco</span>
+          Tips &amp; Pilah Sampah
+        </span>
+<span class="font-label-sm text-label-sm text-outline">12 Nov 2024</span>
+</div>
+<div class="flex gap-space-md items-start">
+<div class="flex-1 flex flex-col gap-1 min-w-0">
+<h3 class="font-headline-sm text-headline-sm text-on-surface leading-snug line-clamp-2">
+            Jadwal Penjemputan Bank Sampah Mandiri: Cara Tukar Minyak Jelantah Jadi Saldo Kas
+          </h3>
+<p class="font-body-md text-body-md text-on-surface-variant line-clamp-2">
+            Minyak goreng bekas jangan dibuang ke wastafel. Kumpulkan dalam jeriken dan setorkan tiap Sabtu ke Pos Daur Ulang RT.
+          </p>
+</div>
+<div class="w-20 h-20 shrink-0 rounded-lg overflow-hidden bg-surface-container relative">
+<img class="w-full h-full object-cover" data-alt="Recycling eco-friendly station in suburban community setting with sorted colorful plastic bins and clean glass jars, warm morning light" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAERQR9WCp0NsKHJ-lyGOL1AqdO_17uN449ixbWsVa2USAYTMsUZIachpfDRhix_60otXKjn3t1Ia07L2elM4bGCDc6QLlmzJvRncNx2XnrrijHRt7Jw7RddZjRlLH05CsFtaX5uEqQ93-tvc1cZ56bynOeAEfFrQs0J9LzROB1OcS9OvpkmmoGlexIegffvDXJKJRX0-UlKNa_yGa0rSVsxNHsVZM7LtmQmlJSgvth">
+</div>
+</div>
+<div class="flex items-center justify-between pt-1 text-on-surface-variant">
+<span class="font-label-sm text-label-sm text-outline">Sie Kebersihan &amp; Lingkungan Hidup</span>
+<span class="material-symbols-outlined text-primary text-[20px]">arrow_forward</span>
+</div>
+</article>
+</section>
+<!-- Empty State (Hidden by default, shown when search/filter has no match) -->
+<div class="hidden px-margin py-12 flex flex-col items-center text-center gap-space-sm" id="emptyFeedState">
+<div class="w-16 h-16 rounded-full bg-surface-container-high flex items-center justify-center text-outline">
+<span class="material-symbols-outlined text-[32px]">newspaper</span>
+</div>
+<h4 class="font-headline-sm text-headline-sm text-on-surface">Tidak Ada Berita Ditemukan</h4>
+<p class="font-body-md text-body-md text-on-surface-variant max-w-xs">
+      Belum ada pengumuman untuk kata kunci atau kategori ini. Coba ganti filter pencarian.
+    </p>
+<button class="mt-2 px-4 py-2 rounded-full bg-primary text-on-primary font-label-md text-label-md" onclick="resetFilters()">
+      Tampilkan Semua Warta
+    </button>
+</div>
+<!-- Quick Action: Kirim Kabar Warga Card / FAB Replacement -->
+<section class="px-margin mt-space-xl">
+<div class="relative bg-gradient-to-r from-primary-container to-primary rounded-xl p-space-md text-on-primary shadow-lg overflow-hidden flex items-center justify-between">
+<!-- Decorative background icon -->
+<div class="absolute -right-4 -bottom-4 text-on-primary/10 pointer-events-none">
+<span class="material-symbols-outlined text-[100px]">edit_note</span>
+</div>
+<div class="flex flex-col gap-1 max-w-[70%] z-10">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[18px] text-on-primary-container">record_voice_over</span>
+<span class="font-label-sm text-label-sm tracking-wide uppercase font-bold text-on-primary-container">Warga Peduli</span>
+</div>
+<h4 class="font-headline-sm text-headline-sm font-bold text-on-primary">
+          Punya Kabar atau Hajat Warga?
+        </h4>
+<p class="font-body-sm text-body-sm text-on-primary/90 leading-tight">
+          Laporkan berita kehilangan, undangan syukuran, atau kabar duka untuk disiarkan ke satu RT.
+        </p>
+</div>
+<button class="z-10 shrink-0 px-4 py-2.5 rounded-full bg-surface-container-lowest text-primary font-label-md text-label-md font-bold shadow-md hover:bg-surface hover:brightness-105 active:scale-95 transition-all flex items-center gap-1" id="btnKirimKabar" type="button"><span class="material-symbols-outlined text-[18px]">add</span><span>Kirim Kabar</span></button>
+</div>
+</section>
+<!-- Interactive Submission Bottom Sheet Modal (Toggled via JS) -->
+<div class="fixed inset-0 z-50 bg-inverse-surface/60 backdrop-blur-sm hidden flex items-end justify-center" id="modalKabarWarga">
+<div class="bg-surface-container-lowest w-full max-w-lg rounded-t-2xl p-space-lg flex flex-col gap-space-md max-h-[85vh] overflow-y-auto">
+<div class="flex items-center justify-between pb-2">
+<div class="flex items-center gap-2">
+<div class="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center">
+<span class="material-symbols-outlined text-[20px]">edit_square</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Kirim Warta Warga</h3>
+</div>
+<button class="w-8 h-8 rounded-full bg-surface-container-high flex items-center justify-center text-on-surface-variant hover:text-on-surface" id="closeModalBtn">
+<span class="material-symbols-outlined text-[20px]">close</span>
+</button>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant">
+        Warta yang dikirimkan akan ditinjau oleh Pengurus RT sebelum disiarkan ke portal pengumuman warga.
+      </p>
+<form class="flex flex-col gap-space-sm" id="formKabarWarga" onsubmit="handleWartaSubmit(event)">
+<div class="flex flex-col gap-1">
+<label class="font-label-md text-label-md text-on-surface">Kategori Berita</label>
+<select class="w-full h-11 px-3 bg-surface-container-low rounded-lg text-body-md text-on-surface focus:outline-none">
+<option value="kehilangan">Barang / Peliharaan Hilang</option>
+<option value="hajat">Pemberitahuan Acara / Syukuran</option>
+<option value="duka">Kabar Duka Cita</option>
+<option value="umum">Warta Umum / Lingkungan</option>
+</select>
+</div>
+<div class="flex flex-col gap-1">
+<label class="font-label-md text-label-md text-on-surface">Judul Berita</label>
+<input class="w-full h-11 px-3 bg-surface-container-low rounded-lg text-body-md text-on-surface focus:outline-none placeholder:text-outline" placeholder="Contoh: Ditemukan Kucing Anggora di Depan Blok C" required="" type="text">
+</div>
+<div class="flex flex-col gap-1">
+<label class="font-label-md text-label-md text-on-surface">Isi Kabar Singkat</label>
+<textarea class="w-full p-3 bg-surface-container-low rounded-lg text-body-md text-on-surface focus:outline-none placeholder:text-outline resize-none" placeholder="Tuliskan keterangan waktu, lokasi, dan kontak penanggung jawab..." required="" rows="3"></textarea>
+</div>
+<div class="p-3 bg-surface-container-low rounded-lg flex items-center justify-between text-on-surface-variant">
+<span class="font-label-md text-label-md flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[18px]">photo_camera</span>
+            Lampirkan Foto Pendukung
+          </span>
+<span class="font-label-sm text-label-sm text-primary font-bold cursor-pointer">Pilih File</span>
+</div>
+<button class="mt-2 w-full h-12 rounded-full bg-primary text-on-primary font-label-lg text-label-lg font-bold shadow-md hover:brightness-105 active:scale-98 transition-all" type="submit">Kirim ke Ketua RT</button>
+</form>
+</div>
+</div>
+</div>
+<script>
+  // Dynamic Tab Switcher
+  function switchNewsTab(tab) {
+    const btnInternal = document.getElementById('tabInternal');
+    const btnWarta = document.getElementById('tabWarta');
+    const items = document.querySelectorAll('.feed-item');
+
+    if (tab === 'internal') {
+      btnInternal.className = 'tab-trigger flex-1 py-2 px-3 rounded-lg text-center font-label-lg text-label-lg font-semibold bg-surface-container-lowest text-primary shadow-sm transition-all';
+      btnWarta.className = 'tab-trigger flex-1 py-2 px-3 rounded-lg text-center font-label-lg text-label-lg font-medium text-on-surface-variant hover:text-on-surface transition-all';
+      items.forEach(el => {
+        if (el.dataset.type === 'internal') {
+          el.classList.remove('hidden');
+        } else {
+          el.classList.add('hidden');
+        }
+      });
+    } else {
+      btnWarta.className = 'tab-trigger flex-1 py-2 px-3 rounded-lg text-center font-label-lg text-label-lg font-semibold bg-surface-container-lowest text-primary shadow-sm transition-all';
+      btnInternal.className = 'tab-trigger flex-1 py-2 px-3 rounded-lg text-center font-label-lg text-label-lg font-medium text-on-surface-variant hover:text-on-surface transition-all';
+      items.forEach(el => {
+        el.classList.remove('hidden');
+      });
+    }
+  }
+
+  // Filter Pills Handling
+  const filterPills = document.querySelectorAll('.filter-pill');
+  filterPills.forEach(pill => {
+    pill.addEventListener('click', () => {
+      filterPills.forEach(p => {
+        p.classList.remove('bg-primary', 'text-on-primary');
+        p.classList.add('bg-surface-container-lowest', 'text-on-surface-variant');
+      });
+      pill.classList.remove('bg-surface-container-lowest', 'text-on-surface-variant');
+      pill.classList.add('bg-primary', 'text-on-primary');
+
+      const category = pill.dataset.category;
+      applyFiltering(category, document.getElementById('searchWartaInput').value.toLowerCase());
+    });
+  });
+
+  // Search Input Handling
+  const searchInput = document.getElementById('searchWartaInput');
+  const clearBtn = document.getElementById('clearSearchBtn');
+
+  searchInput.addEventListener('input', (e) => {
+    const query = e.target.value.toLowerCase().trim();
+    if (query.length > 0) {
+      clearBtn.classList.remove('hidden');
+    } else {
+      clearBtn.classList.add('hidden');
+    }
+    const activePill = document.querySelector('.filter-pill.bg-primary');
+    const category = activePill ? activePill.dataset.category : 'all';
+    applyFiltering(category, query);
+  });
+
+  clearBtn.addEventListener('click', () => {
+    searchInput.value = '';
+    clearBtn.classList.add('hidden');
+    const activePill = document.querySelector('.filter-pill.bg-primary');
+    applyFiltering(activePill ? activePill.dataset.category : 'all', '');
+  });
+
+  function applyFiltering(category, query) {
+    const feedItems = document.querySelectorAll('.feed-item');
+    let visibleCount = 0;
+
+    feedItems.forEach(item => {
+      const matchCat = category === 'all' || item.dataset.category === category;
+      const textContent = item.textContent.toLowerCase();
+      const matchQuery = !query || textContent.includes(query);
+
+      if (matchCat && matchQuery) {
+        item.classList.remove('hidden');
+        visibleCount++;
+      } else {
+        item.classList.add('hidden');
+      }
+    });
+
+    const emptyState = document.getElementById('emptyFeedState');
+    if (visibleCount === 0) {
+      emptyState.classList.remove('hidden');
+    } else {
+      emptyState.classList.add('hidden');
+    }
+  }
+
+  function resetFilters() {
+    searchInput.value = '';
+    clearBtn.classList.add('hidden');
+    const allPill = document.querySelector('.filter-pill[data-category="all"]');
+    if (allPill) allPill.click();
+  }
+
+  // Like Button Micro-interaction
+  document.querySelectorAll('.like-btn').forEach(btn => {
+    let liked = false;
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const countEl = btn.querySelector('.like-count');
+      let count = parseInt(countEl.textContent, 10);
+      if (!liked) {
+        count++;
+        btn.classList.remove('bg-surface-container-high', 'text-primary');
+        btn.classList.add('bg-primary', 'text-on-primary');
+        liked = true;
+      } else {
+        count--;
+        btn.classList.remove('bg-primary', 'text-on-primary');
+        btn.classList.add('bg-surface-container-high', 'text-primary');
+        liked = false;
+      }
+      countEl.textContent = count;
+    });
+  });
+
+  // Modal Kabar Warga Interactions
+  const modal = document.getElementById('modalKabarWarga');
+  const openModalBtn = document.getElementById('btnKirimKabar');
+  const closeModalBtn = document.getElementById('closeModalBtn');
+
+  if (openModalBtn && modal) {
+    openModalBtn.addEventListener('click', () => {
+      modal.classList.remove('hidden');
+    });
+  }
+
+  if (closeModalBtn && modal) {
+    closeModalBtn.addEventListener('click', () => {
+      modal.classList.add('hidden');
+    });
+  }
+
+  window.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      modal.classList.add('hidden');
+    }
+  });
+
+  function handleWartaSubmit(event) {
+    event.preventDefault();
+    alert('Terima kasih! Warta Anda telah diteruskan ke Pengurus RT 05 untuk diverifikasi.');
+    modal.classList.add('hidden');
+    event.target.reset();
+  }
+
+  // Ensure bottom navigation reflects "Berita" tab active state
+  (function highlightBottomNav() {
+    const navLinks = document.querySelectorAll('nav a');
+    navLinks.forEach(link => {
+      const href = link.getAttribute('data-path') || link.getAttribute('href') || '';
+      if (href.includes('berita')) {
+        link.classList.add('text-primary-container', 'font-semibold');
+        link.classList.remove('text-on-surface-variant');
+        const icon = link.querySelector('.material-symbols-outlined');
+        if (icon) {
+          icon.style.fontVariationSettings = "'FILL' 1";
+        }
+      } else {
+        link.classList.remove('text-primary-container', 'font-semibold');
+        link.classList.add('text-on-surface-variant');
+        const icon = link.querySelector('.material-symbols-outlined');
+        if (icon) {
+          icon.style.fontVariationSettings = "'FILL' 0";
+        }
+      }
+    });
+  })();
+</script></main><nav class="fixed bottom-0 w-full z-50 pb-safe bg-surface-container-lowest/90 backdrop-blur-xl shadow-[0_-4px_16px_rgba(0,0,0,0.04)]" data-active-classes="text-primary-container font-semibold"><div class="flex items-center justify-around h-16 px-space-xs"><a class="flex flex-col items-center justify-center min-w-[56px] min-h-[44px] py-1 px-2 rounded-xl text-on-surface-variant transition-all" data-path="dashboard-sapulidi-superapp" href="#"><span class="material-symbols-outlined text-[24px]">home</span><span class="font-label-sm text-label-sm mt-0.5">Beranda</span></a><a class="flex flex-col items-center justify-center min-w-[56px] min-h-[44px] py-1 px-2 rounded-xl text-on-surface-variant transition-all" data-path="administrasi-e-surat-rt" href="#"><span class="material-symbols-outlined text-[24px]">account_balance_wallet</span><span class="font-label-sm text-label-sm mt-0.5">Keuangan</span></a><a class="flex flex-col items-center justify-center min-w-[56px] min-h-[44px] py-1 px-2 rounded-xl text-on-surface-variant transition-all" data-path="berita-pengumuman" href="#"><span class="material-symbols-outlined text-[24px]">newspaper</span><span class="font-label-sm text-label-sm mt-0.5">Berita</span></a><a class="flex flex-col items-center justify-center min-w-[56px] min-h-[44px] py-1 px-2 rounded-xl text-on-surface-variant transition-all" data-path="inventaris-alat-rt" href="#"><span class="material-symbols-outlined text-[24px]">inventory_2</span><span class="font-label-sm text-label-sm mt-0.5">Inventaris</span></a><a class="flex flex-col items-center justify-center min-w-[56px] min-h-[44px] py-1 px-2 rounded-xl text-on-surface-variant transition-all" data-path="profil-warga" href="#"><span class="material-symbols-outlined text-[24px]">person</span><span class="font-label-sm text-label-sm mt-0.5">Profil</span></a></div></nav>
+
+</body></html>
