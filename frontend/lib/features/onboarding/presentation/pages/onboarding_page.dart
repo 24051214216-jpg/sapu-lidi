@@ -3,7 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/app_primary_button.dart';
+import '../../../auth/presentation/pages/login_page.dart';
 
 class OnboardingPage extends StatefulWidget {
   const OnboardingPage({
@@ -22,29 +23,31 @@ class OnboardingPage extends StatefulWidget {
 }
 
 class _OnboardingPageState extends State<OnboardingPage> {
-  static const Duration _slideDuration = Duration(seconds: 5);
+  static const Color _green = Color(0xFF006130);
+  static const Color _surface = Color(0xFFFAF8FF);
+  static const Color _text = Color(0xFF131B2E);
+  static const Color _muted = Color(0xFF667085);
 
   final PageController _pageController = PageController();
 
-  Timer? _autoSlideTimer;
-
-  int _activeDot = 0;
+  Timer? _timer;
+  int _activePage = 0;
 
   final List<_OnboardingSlide> _slides = const [
     _OnboardingSlide(
-      title: 'Transparansi Iuran, Surat Cepat & Siaga Keamanan',
-      description: 'Pantau kas terbuka RT, pinjam inventaris gotong royong, '
-          'hingga panggil pos satpam siaga darurat langsung dari genggaman.',
+      title: 'Selamat Datang di SapuLidi',
+      description:
+          'Solusi digital terpadu manajemen RT/RW. Cek iuran, pinjam inventaris gotong royong, dan urus administrasi warga lebih cepat & transparan.',
     ),
     _OnboardingSlide(
-      title: 'Kelola Iuran Warga & Catatan Kas Real-Time',
-      description: 'Cek laporan pemasukan, pengeluaran sampah & ronda bulanan '
-          'dengan bukti transfer digital yang dapat diunduh transparan.',
+      title: 'Urus Administrasi Lebih Mudah',
+      description:
+          'Akses berbagai layanan administrasi lingkungan dalam satu aplikasi. Lebih praktis, cepat, dan terorganisir.',
     ),
     _OnboardingSlide(
-      title: 'Pinjam Sarana RT & Tombol Tanggap SOS',
-      description: 'Pinjam tenda, kursi, mesin rumput secara gratis serta '
-          'tombol darurat 1-klik terhubung langsung ke pos ronda & warga.',
+      title: 'Wujudkan Lingkungan Guyub Rukun',
+      description:
+          'Bangun komunikasi dan kebersamaan antarwarga melalui ekosistem digital SapuLidi.',
     ),
   ];
 
@@ -54,146 +57,148 @@ class _OnboardingPageState extends State<OnboardingPage> {
     _startAutoSlide();
   }
 
-  // AUTO SLIDE
-
-  void _startAutoSlide() {
-    _autoSlideTimer?.cancel();
-
-    _autoSlideTimer = Timer.periodic(_slideDuration, (timer) {
-      if (!mounted || !_pageController.hasClients) return;
-
-      final nextPage = (_activeDot + 1) % _slides.length;
-
-      _pageController.animateToPage(
-        nextPage,
-        duration: const Duration(milliseconds: 450),
-        curve: Curves.easeInOutCubic,
-      );
-    });
-  }
-
-  void _stopAutoSlide() {
-    _autoSlideTimer?.cancel();
-  }
-
-  // PAGE CHANGED
-
-  void _onPageChanged(int index) {
-    if (!mounted) return;
-
-    setState(() {
-      _activeDot = index;
-    });
-  }
-
-  // NAVIGASI MANUAL
-
-  void _goToPage(int index) {
-    if (!_pageController.hasClients) return;
-
-    _stopAutoSlide();
-
-    _pageController.animateToPage(
-      index,
-      duration: const Duration(milliseconds: 450),
-      curve: Curves.easeInOutCubic,
-    );
-
-    _startAutoSlide();
-  }
-
-  // PESAN
-
-  void _showMessage(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-  }
-
-  void _handleStart() {
-    if (widget.onStart != null) {
-      widget.onStart!();
-    } else {
-      _showMessage('Halaman login akan segera tersedia.');
-    }
-  }
-
-  void _handleLogin() {
-    if (widget.onLogin != null) {
-      widget.onLogin!();
-    } else {
-      _showMessage('Halaman login akan segera tersedia.');
-    }
-  }
-
-  void _handleSkip() {
-    _stopAutoSlide();
-
-    if (widget.onSkip != null) {
-      widget.onSkip!();
-    } else {
-      _showMessage('Onboarding selesai. Silakan lanjut ke login.');
-    }
-  }
-
   @override
   void dispose() {
-    _autoSlideTimer?.cancel();
+    _timer?.cancel();
     _pageController.dispose();
     super.dispose();
   }
 
+  void _startAutoSlide() {
+    _timer?.cancel();
+
+    _timer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!mounted || !_pageController.hasClients) return;
+
+      final nextPage = (_activePage + 1) % _slides.length;
+
+      _pageController.animateToPage(
+        nextPage,
+        duration: const Duration(milliseconds: 450),
+        curve: Curves.easeInOut,
+      );
+    });
+  }
+
+  void _onPageChanged(int index) {
+    setState(() => _activePage = index);
+  }
+
+  void _navigateToLogin(VoidCallback? callback) {
+    _timer?.cancel();
+
+    if (callback != null) {
+      callback();
+      return;
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const LoginPage(),
+      ),
+    );
+  }
+
+  void _handleStart() {
+    _navigateToLogin(widget.onStart);
+  }
+
+  void _handleLogin() {
+    _navigateToLogin(widget.onLogin);
+  }
+
+  void _handleSkip() {
+    _navigateToLogin(widget.onSkip);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-    final compact = size.height < 740;
-
     return Scaffold(
-      backgroundColor: AppColors.surface,
+      backgroundColor: _surface,
       body: SafeArea(
         child: Stack(
           children: [
+            _buildBackgroundDecorations(),
+            Column(
+              children: [
+                _buildHeader(),
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      return SingleChildScrollView(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                        ),
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            minHeight: constraints.maxHeight,
+                          ),
+                          child: Column(
+                            children: [
+                              const SizedBox(height: 8),
+                              _buildHeroImage(),
+                              const SizedBox(height: 24),
+                              _buildTagline(),
+                              const SizedBox(height: 20),
+                              _buildSlideContent(),
+                              const SizedBox(height: 20),
+                              _buildPagination(),
+                              const SizedBox(height: 24),
+                              AppPrimaryButton(
+                                label: 'Mulai Sekarang',
+                                icon: Icons.arrow_forward_rounded,
+                                height: 58,
+                                borderRadius: 18,
+                                onPressed: _handleStart,
+                              ),
+                              const SizedBox(height: 18),
+                              _buildLoginLink(),
+                              const SizedBox(height: 20),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBackgroundDecorations() {
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: Stack(
+          children: [
             Positioned(
-              top: -64,
-              right: -64,
-              child: _glow(
-                210,
-                AppColors.secondaryFixed.withValues(alpha: 0.40),
+              top: -100,
+              right: -100,
+              child: Container(
+                width: 260,
+                height: 260,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFFFFDBC8).withValues(
+                    alpha: 0.32,
+                  ),
+                ),
               ),
             ),
             Positioned(
-              top: size.height * 0.34,
-              left: -82,
-              child: _glow(
-                190,
-                AppColors.primaryFixed.withValues(alpha: 0.30),
-              ),
-            ),
-            SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                child: Column(
-                  children: [
-                    _header(),
-                    SizedBox(height: compact ? 8 : 12),
-                    _hero(size, compact),
-                    SizedBox(height: compact ? 14 : 18),
-                    _tagline(),
-                    const SizedBox(height: 12),
-                    _slideContent(),
-                    const SizedBox(height: 16),
-                    _pagination(),
-                    const SizedBox(height: 16),
-                    _startButton(),
-                    const SizedBox(height: 16),
-                    _loginPrompt(),
-                  ],
+              top: 250,
+              left: -140,
+              child: Container(
+                width: 260,
+                height: 260,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFF96F7AF).withValues(
+                    alpha: 0.18,
+                  ),
                 ),
               ),
             ),
@@ -203,309 +208,82 @@ class _OnboardingPageState extends State<OnboardingPage> {
     );
   }
 
-  // BACKGROUND GLOW
-
-  Widget _glow(double size, Color color) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-      ),
-    );
-  }
-
-  // HEADER LOGO DAN TOMBOL LEWATI
-
-  Widget _header() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: 7,
-          ),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.88),
-            borderRadius: BorderRadius.circular(40),
-            boxShadow: _softShadow,
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 30,
-                height: 30,
-                decoration: const BoxDecoration(
-                  color: AppColors.primary,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.cleaning_services,
-                  size: 17,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'SapuLidi',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.onSurface,
-                      height: 1.1,
-                    ),
-                  ),
-                  Text(
-                    'SUPERAPP RT',
-                    style: GoogleFonts.inter(
-                      fontSize: 8,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.6,
-                      color: AppColors.primary,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        TextButton(
-          onPressed: _handleSkip,
-          style: TextButton.styleFrom(
-            foregroundColor: AppColors.onSurfaceVariant,
-            backgroundColor: Colors.white.withValues(alpha: 0.88),
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(22, 14, 22, 8),
+      child: Row(
+        children: [
+          Container(
             padding: const EdgeInsets.symmetric(
-              horizontal: 18,
-              vertical: 7,
+              horizontal: 13,
+              vertical: 9,
             ),
-            minimumSize: Size.zero,
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            shape: const StadiumBorder(),
-          ),
-          child: Text(
-            'Lewati',
-            style: GoogleFonts.inter(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(
+                color: const Color(0xFFE5EAE4),
+              ),
             ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // GAMBAR UTAMA ONBOARDING
-  // Gambar tetap, tidak ikut berganti ketika slide berubah.
-
-  Widget _hero(Size size, bool compact) {
-    final heroHeight =
-        (size.height * (compact ? 0.39 : 0.43)).clamp(260.0, 390.0).toDouble();
-
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 360),
-        child: SizedBox(
-          height: heroHeight,
-          width: double.infinity,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(32),
-            child: Stack(
-              alignment: Alignment.bottomCenter,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
+                  width: 28,
+                  height: 28,
                   decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Color(0xFFFFE9E0),
-                        AppColors.surfaceContainerLow,
-                        AppColors.surfaceContainerLowest,
-                      ],
-                    ),
+                    color: _green,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.cleaning_services_rounded,
+                    color: Colors.white,
+                    size: 16,
                   ),
                 ),
-
-                // BACKGROUND ARCH PEACH
-
-                Positioned(
-                  left: 30,
-                  right: 30,
-                  top: 20,
-                  bottom: 0,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: AppColors.secondaryFixed.withValues(
-                        alpha: 0.78,
-                      ),
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.elliptical(180, 210),
+                const SizedBox(width: 9),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'SapuLidi',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: _text,
+                        height: 1.2,
                       ),
                     ),
-                  ),
-                ),
-
-                // KARAKTER 3D PENGURUS RT
-
-                Positioned.fill(
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 18),
-                    child: Image.asset(
-                      'assets/images/onboarding_character.png',
-                      fit: BoxFit.contain,
-                      alignment: Alignment.bottomCenter,
-                      errorBuilder: (context, error, stackTrace) {
-                        return const Center(
-                          child: Icon(
-                            Icons.image_not_supported_outlined,
-                            size: 60,
-                            color: AppColors.outline,
-                          ),
-                        );
-                      },
+                    Text(
+                      'SUPERAPP RT',
+                      style: GoogleFonts.inter(
+                        fontSize: 8,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1,
+                        color: _green,
+                      ),
                     ),
-                  ),
-                ),
-
-                // BADGE GUYUB RUKUN
-
-                Positioned(
-                  top: 14,
-                  right: 12,
-                  child: _floatingBadge(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 7,
-                          height: 7,
-                          decoration: const BoxDecoration(
-                            color: AppColors.primaryContainer,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          '100% Guyub Rukun',
-                          style: GoogleFonts.inter(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.onSurface,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // BADGE TRANSPARANSI KAS
-
-                Positioned(
-                  bottom: 16,
-                  left: 12,
-                  child: _floatingBadge(
-                    radius: 12,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 27,
-                          height: 27,
-                          decoration: BoxDecoration(
-                            color: AppColors.primaryFixed,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(
-                            Icons.verified_user,
-                            color: AppColors.primary,
-                            size: 16,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Transparansi',
-                              style: GoogleFonts.inter(
-                                fontSize: 8,
-                                color: AppColors.outline,
-                              ),
-                            ),
-                            Text(
-                              'Kas RT Terbuka',
-                              style: GoogleFonts.inter(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800,
-                                color: AppColors.onSurface,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
+                  ],
                 ),
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  // FLOATING BADGE
-
-  Widget _floatingBadge({
-    required Widget child,
-    double radius = 30,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 10,
-        vertical: 7,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.94),
-        borderRadius: BorderRadius.circular(radius),
-        boxShadow: _softShadow,
-      ),
-      child: child,
-    );
-  }
-
-  // TAGLINE
-
-  Widget _tagline() {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 14,
-        vertical: 6,
-      ),
-      decoration: BoxDecoration(
-        color: AppColors.primaryFixed.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(30),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(
-            Icons.handshake,
-            size: 14,
-            color: AppColors.onPrimaryFixed,
-          ),
-          const SizedBox(width: 5),
-          Text(
-            'Sahabat Rukun Tetangga & Warga',
-            style: GoogleFonts.inter(
-              fontSize: 9,
-              fontWeight: FontWeight.w700,
-              color: AppColors.onPrimaryFixed,
+          const Spacer(),
+          TextButton(
+            onPressed: _handleSkip,
+            style: TextButton.styleFrom(
+              foregroundColor: _muted,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 8,
+              ),
+            ),
+            child: Text(
+              'Lewati',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ],
@@ -513,49 +291,255 @@ class _OnboardingPageState extends State<OnboardingPage> {
     );
   }
 
-  // AUTO-SLIDE TULISAN DI BAWAH GAMBAR
+  Widget _buildHeroImage() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth.clamp(220.0, 340.0);
 
-  Widget _slideContent() {
+        return SizedBox(
+          width: width,
+          height: width * 1.12,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned(
+                left: 10,
+                right: 10,
+                top: 8,
+                bottom: 4,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFE8D9),
+                    borderRadius: BorderRadius.circular(150).copyWith(
+                      bottomLeft: const Radius.circular(32),
+                      bottomRight: const Radius.circular(32),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                top: 0,
+                bottom: 0,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(32),
+                  child: Image.asset(
+                    'assets/images/onboarding_character.png',
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        alignment: Alignment.center,
+                        color: const Color(0xFFFFE8D9),
+                        child: const Icon(
+                          Icons.people_alt_rounded,
+                          size: 110,
+                          color: _green,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 22,
+                right: 0,
+                child: _heroBadge(
+                  icon: Icons.handshake_rounded,
+                  title: '100% Guyub Rukun',
+                  background: Colors.white,
+                  foreground: _green,
+                ),
+              ),
+              Positioned(
+                bottom: 24,
+                left: 0,
+                child: _heroBadge(
+                  icon: Icons.account_balance_wallet_rounded,
+                  title: 'Transparansi',
+                  subtitle: 'Kas RT Terbuka',
+                  background: _green,
+                  foreground: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _heroBadge({
+    required IconData icon,
+    required String title,
+    String? subtitle,
+    required Color background,
+    required Color foreground,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 12,
+        vertical: 10,
+      ),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: foreground, size: 18),
+          const SizedBox(width: 7),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                title,
+                style: GoogleFonts.inter(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: foreground,
+                ),
+              ),
+              if (subtitle != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: GoogleFonts.inter(
+                    fontSize: 9,
+                    color: foreground.withValues(alpha: 0.85),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTagline() {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 14,
+        vertical: 9,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEAF7ED),
+        borderRadius: BorderRadius.circular(30),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.handshake_outlined,
+            color: _green,
+            size: 17,
+          ),
+          const SizedBox(width: 7),
+          Text(
+            'Sahabat Rukun Tetangga & Warga',
+            style: GoogleFonts.inter(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: _green,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSlideContent() {
     return SizedBox(
-      height: 158,
+      height: 130,
       child: PageView.builder(
         controller: _pageController,
         itemCount: _slides.length,
         onPageChanged: _onPageChanged,
-        physics: const BouncingScrollPhysics(),
         itemBuilder: (context, index) {
           final slide = _slides[index];
 
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 350),
-              child: Column(
-                key: ValueKey(index),
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    slide.title,
-                    textAlign: TextAlign.center,
+            child: Column(
+              children: [
+                RichText(
+                  textAlign: TextAlign.center,
+                  text: TextSpan(
                     style: GoogleFonts.plusJakartaSans(
-                      fontSize: 21,
-                      height: 1.28,
-                      letterSpacing: -0.6,
+                      fontSize: 23,
+                      height: 1.3,
                       fontWeight: FontWeight.w800,
-                      color: AppColors.onSurface,
+                      color: _text,
                     ),
+                    children: _buildTitleSpans(slide.title),
                   ),
-                  const SizedBox(height: 10),
-                  Text(
-                    slide.description,
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 12,
-                      height: 1.55,
-                      color: AppColors.onSurfaceVariant,
-                    ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  slide.description,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    height: 1.7,
+                    color: _muted,
                   ),
-                ],
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  List<InlineSpan> _buildTitleSpans(String title) {
+    if (title == 'Selamat Datang di SapuLidi') {
+      return [
+        const TextSpan(text: 'Selamat Datang di '),
+        const TextSpan(
+          text: 'SapuLidi',
+          style: TextStyle(color: _green),
+        ),
+      ];
+    }
+
+    return [TextSpan(text: title)];
+  }
+
+  Widget _buildPagination() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(
+        _slides.length,
+        (index) {
+          final isActive = index == _activePage;
+
+          return GestureDetector(
+            onTap: () {
+              _pageController.animateToPage(
+                index,
+                duration: const Duration(milliseconds: 350),
+                curve: Curves.easeInOut,
+              );
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              width: isActive ? 25 : 7,
+              height: 7,
+              decoration: BoxDecoration(
+                color: isActive ? _green : const Color(0xFFD9E1D9),
+                borderRadius: BorderRadius.circular(20),
               ),
             ),
           );
@@ -564,116 +548,34 @@ class _OnboardingPageState extends State<OnboardingPage> {
     );
   }
 
-  // PAGINATION DOTS
-
-  Widget _pagination() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(_slides.length, (index) {
-        final active = index == _activeDot;
-
-        return GestureDetector(
-          onTap: () => _goToPage(index),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            margin: const EdgeInsets.symmetric(horizontal: 4),
-            width: active ? 25 : 7,
-            height: 7,
-            decoration: BoxDecoration(
-              color: active ? AppColors.primaryContainer : AppColors.surfaceDim,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: active ? _softShadow : null,
+  Widget _buildLoginLink() {
+    return Center(
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        children: [
+          Text(
+            'Sudah punya akun warga? ',
+            style: GoogleFonts.inter(
+              fontSize: 11,
+              color: _muted,
             ),
           ),
-        );
-      }),
-    );
-  }
-
-  // TOMBOL MULAI SEKARANG
-
-  Widget _startButton() {
-    return SizedBox(
-      width: double.infinity,
-      height: 54,
-      child: ElevatedButton(
-        onPressed: _handleStart,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primaryContainer,
-          foregroundColor: Colors.white,
-          elevation: 5,
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          shape: const StadiumBorder(),
-        ),
-        child: Row(
-          children: [
-            Text(
-              'Mulai Sekarang',
+          GestureDetector(
+            onTap: _handleLogin,
+            child: Text(
+              'Masuk',
               style: GoogleFonts.inter(
-                fontSize: 15,
+                fontSize: 11,
                 fontWeight: FontWeight.w800,
-                letterSpacing: 0.1,
+                color: _green,
               ),
             ),
-            const Spacer(),
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.20),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.arrow_forward,
-                size: 20,
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
-
-  // LINK LOGIN
-
-  Widget _loginPrompt() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text(
-          'Sudah punya akun warga? ',
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 10,
-            color: AppColors.outline,
-          ),
-        ),
-        GestureDetector(
-          onTap: _handleLogin,
-          child: Text(
-            'Masuk',
-            style: GoogleFonts.inter(
-              fontSize: 10,
-              fontWeight: FontWeight.w800,
-              color: AppColors.primary,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // SHADOW
-
-  List<BoxShadow> get _softShadow => [
-        BoxShadow(
-          color: const Color(0xFF172A20).withValues(alpha: 0.10),
-          blurRadius: 12,
-          offset: const Offset(0, 4),
-        ),
-      ];
 }
-
-// MODEL SLIDE ONBOARDING
 
 class _OnboardingSlide {
   const _OnboardingSlide({
