@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../core/widgets/app_primary_button.dart';
+import 'forgot_password_page.dart';
+import 'register_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -78,8 +80,22 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  void _openPlaceholder(String pageName) {
-    _showMessage('Halaman $pageName belum diimplementasikan.');
+  void _openForgotPassword() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const ForgotPasswordPage(),
+      ),
+    );
+  }
+
+  void _openRegister() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const RegisterPage(),
+      ),
+    );
   }
 
   String? _validatePhone(String? value) {
@@ -385,7 +401,7 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ),
                   GestureDetector(
-                    onTap: () => _openPlaceholder('Registrasi'),
+                    onTap: _openRegister,
                     child: Text(
                       'Daftar Sekarang',
                       style: GoogleFonts.inter(
@@ -541,7 +557,7 @@ class _LoginPageState extends State<LoginPage> {
         ),
         const Spacer(),
         GestureDetector(
-          onTap: () => _openPlaceholder('Lupa Password'),
+          onTap: _openForgotPassword,
           child: Text(
             'Lupa Password?',
             style: GoogleFonts.inter(
