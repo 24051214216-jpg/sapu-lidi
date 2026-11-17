@@ -26,11 +26,11 @@ sapu-lidi/
 ├── frontend/   Flutter (Clean Architecture + Feature-First, Cubit/BLoC)
 ├── api/        Kontrak API: OpenAPI, Postman, contoh request/response
 ├── backend/    Node.js + Express (Route > Controller > Service > Repository > Resource)
-├── database/   Desain DB: ERD, kamus data, snapshot SQL (MySQL, dikelola via DBeaver)
+├── database/   Desain DB: ERD, kamus data, snapshot SQL (PostgreSQL, dikelola via DBeaver)
 └── docs/       UCD (Double Diamond), ADR, traceability, artikel ilmiah, bahan video
 ```
 
 ## Aturan Emas
 
 Flutter tidak pernah berbicara langsung ke database. Alurnya selalu
-Flutter (klien) > API Node.js > MySQL.
+Flutter (klien) > API Node.js > PostgreSQL.
