@@ -1,10 +1,11 @@
-import 'dart:async';
-
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import '../../../../core/widgets/app_primary_button.dart';
+import '../../../../core/network/dio_client.dart';
+import '../../data/datasources/auth_remote_datasource.dart';
 import 'forgot_password_page.dart';
+import 'otp_verification_page.dart';
 import 'register_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -25,9 +26,20 @@ class _LoginPageState extends State<LoginPage> {
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
 
+  late final Dio _dio;
+  late final AuthRemoteDataSource _authDataSource;
+
   bool _rememberMe = false;
   bool _obscurePassword = true;
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _dio = DioClient.create();
+    _authDataSource = AuthRemoteDataSource(_dio);
+  }
 
   @override
   void dispose() {
@@ -49,6 +61,18 @@ class _LoginPageState extends State<LoginPage> {
       );
   }
 
+  String _normalizePhone(String value) {
+    var phone = value.replaceAll(RegExp(r'\D'), '');
+
+    if (phone.startsWith('0')) {
+      phone = phone.substring(1);
+    } else if (phone.startsWith('62')) {
+      phone = phone.substring(2);
+    }
+
+    return '+62$phone';
+  }
+
   Future<void> _handleLogin() async {
     FocusScope.of(context).unfocus();
 
@@ -56,28 +80,57 @@ class _LoginPageState extends State<LoginPage> {
 
     setState(() => _isLoading = true);
 
-    // TODO: Hubungkan dengan API autentikasi backend.
-    await Future.delayed(const Duration(milliseconds: 800));
+    try {
+      final phone = _normalizePhone(
+        _phoneController.text,
+      );
 
-    if (!mounted) return;
+      final result = await _authDataSource.login(
+        noHp: phone,
+        password: _passwordController.text,
+      );
 
-    setState(() => _isLoading = false);
+      if (!mounted) return;
 
-    _showMessage(
-      'Form login valid. Autentikasi backend belum dihubungkan.',
-    );
-  }
+      final verified = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => OtpVerificationPage(
+            challengeId: result['challengeId'] as String,
+            phoneNumber: result['phoneMasked'] as String,
+            expiresIn: int.tryParse(
+                  result['expiresIn'].toString(),
+                ) ??
+                300,
+          ),
+        ),
+      );
 
-  void _openOtp(String method) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _OtpVerificationSheet(
-        phoneNumber: _phoneController.text.trim(),
-        method: method,
-      ),
-    );
+      if (!mounted) return;
+
+      if (verified == true) {
+        _showMessage(
+          'Verifikasi berhasil. Sesi autentikasi telah disimpan.',
+        );
+      }
+    } on DioException catch (error) {
+      final responseData = error.response?.data;
+
+      final message =
+          responseData is Map ? responseData['message']?.toString() : null;
+
+      _showMessage(
+        message ?? 'Tidak dapat terhubung ke server.',
+      );
+    } catch (error) {
+      _showMessage(
+        error.toString().replaceFirst('Exception: ', ''),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   void _openForgotPassword() {
@@ -184,7 +237,9 @@ class _LoginPageState extends State<LoginPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: const Color(0xFFE5EAE4)),
+        border: Border.all(
+          color: const Color(0xFFE5EAE4),
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -221,7 +276,11 @@ class _LoginPageState extends State<LoginPage> {
         child: SizedBox(
           width: 42,
           height: 42,
-          child: Icon(icon, color: _text, size: 21),
+          child: Icon(
+            icon,
+            color: _text,
+            size: 21,
+          ),
         ),
       ),
     );
@@ -242,7 +301,9 @@ class _LoginPageState extends State<LoginPage> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.all(Radius.circular(28)),
+        borderRadius: BorderRadius.all(
+          Radius.circular(28),
+        ),
       ),
       child: Column(
         children: [
@@ -346,47 +407,40 @@ class _LoginPageState extends State<LoginPage> {
             const SizedBox(height: 12),
             _buildFormOptions(),
             const SizedBox(height: 22),
-            AppPrimaryButton(
-              label: 'Masuk',
-              icon: Icons.arrow_forward_rounded,
-              isLoading: _isLoading,
-              onPressed: _handleLogin,
-            ),
-            const SizedBox(height: 22),
-            _buildDivider(),
-            const SizedBox(height: 18),
-            Text(
-              'Pilih metode verifikasi alternatif',
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                color: _muted,
+            SizedBox(
+              width: double.infinity,
+              height: 54,
+              child: ElevatedButton.icon(
+                onPressed: _isLoading ? null : _handleLogin,
+                icon: _isLoading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.arrow_forward_rounded),
+                label: Text(
+                  _isLoading ? 'Memproses...' : 'Masuk',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _green,
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor: _green.withValues(
+                    alpha: 0.6,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
               ),
             ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildAlternativeCard(
-                    icon: Icons.chat_rounded,
-                    title: 'WhatsApp',
-                    subtitle: '1-Klik',
-                    color: const Color(0xFF20A85A),
-                    onTap: () => _openOtp('WhatsApp'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildAlternativeCard(
-                    icon: Icons.sms_rounded,
-                    title: 'Kode OTP',
-                    subtitle: '6 Digit',
-                    color: const Color(0xFF2876D2),
-                    onTap: () => _openOtp('SMS & Telegram'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 18),
             _buildInfoBox(),
             const SizedBox(height: 22),
             Center(
@@ -450,7 +504,11 @@ class _LoginPageState extends State<LoginPage> {
               ),
             ),
           ),
-          Container(width: 1, height: 25, color: _outline),
+          Container(
+            width: 1,
+            height: 25,
+            color: _outline,
+          ),
           Expanded(
             child: TextFormField(
               controller: _phoneController,
@@ -484,7 +542,10 @@ class _LoginPageState extends State<LoginPage> {
       controller: _passwordController,
       obscureText: _obscurePassword,
       validator: _validatePassword,
-      style: GoogleFonts.inter(fontSize: 14, color: _text),
+      style: GoogleFonts.inter(
+        fontSize: 14,
+        color: _text,
+      ),
       decoration: InputDecoration(
         hintText: 'Masukkan kata sandi',
         hintStyle: GoogleFonts.inter(
@@ -498,7 +559,9 @@ class _LoginPageState extends State<LoginPage> {
         ),
         suffixIcon: IconButton(
           onPressed: () {
-            setState(() => _obscurePassword = !_obscurePassword);
+            setState(() {
+              _obscurePassword = !_obscurePassword;
+            });
           },
           icon: Icon(
             _obscurePassword
@@ -518,7 +581,10 @@ class _LoginPageState extends State<LoginPage> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: _green, width: 1.5),
+          borderSide: const BorderSide(
+            color: _green,
+            width: 1.5,
+          ),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
@@ -526,7 +592,10 @@ class _LoginPageState extends State<LoginPage> {
         ),
         focusedErrorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Colors.red, width: 1.5),
+          borderSide: const BorderSide(
+            color: Colors.red,
+            width: 1.5,
+          ),
         ),
       ),
     );
@@ -544,7 +613,9 @@ class _LoginPageState extends State<LoginPage> {
               borderRadius: BorderRadius.circular(5),
             ),
             onChanged: (value) {
-              setState(() => _rememberMe = value ?? false);
+              setState(() {
+                _rememberMe = value ?? false;
+              });
             },
           ),
         ),
@@ -571,103 +642,29 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  Widget _buildDivider() {
-    return Row(
-      children: [
-        const Expanded(child: Divider(color: Color(0xFFE5EAE4))),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Text(
-            'ATAU MASUK DENGAN',
-            style: GoogleFonts.inter(
-              fontSize: 9,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1,
-              color: _muted,
-            ),
-          ),
-        ),
-        const Expanded(child: Divider(color: Color(0xFFE5EAE4))),
-      ],
-    );
-  }
-
-  Widget _buildAlternativeCard({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return Material(
-      color: Colors.white,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.symmetric(
-            vertical: 14,
-            horizontal: 10,
-          ),
-          decoration: BoxDecoration(
-            border: Border.all(color: const Color(0xFFE5EAE4)),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Row(
-            children: [
-              Icon(icon, color: color, size: 25),
-              const SizedBox(width: 9),
-              Flexible(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        color: _text,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      subtitle,
-                      style: GoogleFonts.inter(
-                        fontSize: 10,
-                        color: _muted,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildInfoBox() {
     return Container(
       padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
         color: const Color(0xFFF0F8F2),
         borderRadius: BorderRadius.circular(13),
-        border: Border.all(color: const Color(0xFFD9EBDD)),
+        border: Border.all(
+          color: const Color(0xFFD9EBDD),
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Icon(
-            Icons.info_outline_rounded,
+            Icons.shield_outlined,
             size: 19,
             color: _green,
           ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Login Tanpa Sandi: Tautan verifikasi 1-klik atau 6 digit OTP akan dikirim langsung ke kontak nomor HP yang terdaftar di basis data RT.',
+              'Keamanan akun dilindungi dengan verifikasi dua langkah. '
+              'Setelah password benar, kode OTP akan dikirim ke nomor HP terdaftar.',
               style: GoogleFonts.inter(
                 fontSize: 10,
                 height: 1.6,
@@ -705,7 +702,7 @@ class _LoginPageState extends State<LoginPage> {
           ),
           const SizedBox(height: 8),
           Text(
-            'RT 04 / RW 07  •  Kel. Sukamaju',
+            'RT 04 / RW 07 • Kel. Sukamaju',
             style: GoogleFonts.inter(
               fontSize: 10,
               fontWeight: FontWeight.w700,
@@ -713,247 +710,6 @@ class _LoginPageState extends State<LoginPage> {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _OtpVerificationSheet extends StatefulWidget {
-  const _OtpVerificationSheet({
-    required this.phoneNumber,
-    required this.method,
-  });
-
-  final String phoneNumber;
-  final String method;
-
-  @override
-  State<_OtpVerificationSheet> createState() => _OtpVerificationSheetState();
-}
-
-class _OtpVerificationSheetState extends State<_OtpVerificationSheet> {
-  static const Color _green = Color(0xFF006130);
-
-  final _otpController = TextEditingController();
-  Timer? _timer;
-  int _remainingSeconds = 45;
-  bool _isVerifying = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _startTimer();
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    _otpController.dispose();
-    super.dispose();
-  }
-
-  void _startTimer() {
-    _timer?.cancel();
-    setState(() => _remainingSeconds = 45);
-
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        return;
-      }
-
-      if (_remainingSeconds <= 1) {
-        timer.cancel();
-        setState(() => _remainingSeconds = 0);
-      } else {
-        setState(() => _remainingSeconds--);
-      }
-    });
-  }
-
-  Future<void> _verifyOtp() async {
-    if (_otpController.text.trim().length != 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Masukkan 6 digit kode OTP.'),
-        ),
-      );
-      return;
-    }
-
-    setState(() => _isVerifying = true);
-
-    // TODO: Verifikasi OTP melalui backend.
-    await Future.delayed(const Duration(milliseconds: 700));
-
-    if (!mounted) return;
-
-    setState(() => _isVerifying = false);
-
-    Navigator.pop(context);
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Kode diterima. Verifikasi backend belum dihubungkan.',
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-
-    return Padding(
-      padding: EdgeInsets.only(bottom: bottomInset),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(24, 12, 24, 28),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(
-            top: Radius.circular(28),
-          ),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 42,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFD9DED9),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              const SizedBox(height: 24),
-              Container(
-                width: 58,
-                height: 58,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEAF7ED),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Icon(
-                  Icons.verified_user_outlined,
-                  color: _green,
-                  size: 30,
-                ),
-              ),
-              const SizedBox(height: 18),
-              Text(
-                'Verifikasi Kode OTP',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                  color: const Color(0xFF131B2E),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Masukkan 6 digit kode yang dikirim melalui ${widget.method} ke nomor:',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
-                  fontSize: 12,
-                  height: 1.6,
-                  color: const Color(0xFF667085),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '+62 ${widget.phoneNumber}',
-                style: GoogleFonts.inter(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: _green,
-                ),
-              ),
-              const SizedBox(height: 22),
-              TextField(
-                controller: _otpController,
-                keyboardType: TextInputType.number,
-                maxLength: 6,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 12,
-                  color: _green,
-                ),
-                decoration: InputDecoration(
-                  counterText: '',
-                  hintText: '------',
-                  hintStyle: GoogleFonts.inter(
-                    fontSize: 23,
-                    letterSpacing: 8,
-                    color: const Color(0xFFBECABD),
-                  ),
-                  filled: true,
-                  fillColor: const Color(0xFFF7FAF7),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(15),
-                    borderSide: const BorderSide(
-                      color: Color(0xFFBECABD),
-                    ),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(15),
-                    borderSide: const BorderSide(
-                      color: Color(0xFFBECABD),
-                    ),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(15),
-                    borderSide: const BorderSide(
-                      color: _green,
-                      width: 1.5,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                _remainingSeconds > 0
-                    ? 'Kirim ulang kode dalam 00:${_remainingSeconds.toString().padLeft(2, '0')}'
-                    : 'Belum menerima kode OTP?',
-                style: GoogleFonts.inter(
-                  fontSize: 11,
-                  color: const Color(0xFF667085),
-                ),
-              ),
-              if (_remainingSeconds == 0)
-                TextButton(
-                  onPressed: _startTimer,
-                  child: Text(
-                    'Kirim Ulang Kode',
-                    style: GoogleFonts.inter(
-                      color: _green,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              const SizedBox(height: 12),
-              AppPrimaryButton(
-                label: 'Verifikasi Sekarang',
-                isLoading: _isVerifying,
-                onPressed: _verifyOtp,
-              ),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text(
-                  'Batalkan',
-                  style: GoogleFonts.inter(
-                    color: const Color(0xFF667085),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

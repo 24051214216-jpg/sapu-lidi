@@ -1,3 +1,4 @@
+
 name: sapu_lidi
 description: Sapu Lidi SuperApp RT/RW
 publish_to: 'none'
@@ -13,6 +14,12 @@ dependencies:
 
   cupertino_icons: ^1.0.8
   google_fonts: ^6.2.1
+
+  # HTTP Client
+  dio: ^5.8.0+1
+
+  # Secure Local Storage
+  flutter_secure_storage: ^9.2.4
 
 dev_dependencies:
   flutter_test:
