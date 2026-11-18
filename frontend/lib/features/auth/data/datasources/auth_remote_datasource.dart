@@ -8,6 +8,44 @@ class AuthRemoteDataSource {
 
   final Dio _dio;
 
+  Future<AuthSessionModel> register({
+    required String nama,
+    required String noHp,
+    required String blokRumah,
+    required String noRumah,
+    required String password,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.register,
+      data: {
+        'nama': nama,
+        'noHp': noHp,
+        'blokRumah': blokRumah,
+        'noRumah': noRumah,
+        'password': password,
+      },
+    );
+
+    final body = _readBody(response.data);
+    final data = _readData(body);
+
+    if (body['success'] != true) {
+      throw Exception(
+        body['message']?.toString() ?? 'Pendaftaran warga gagal.',
+      );
+    }
+
+    final session = AuthSessionModel.fromJson(data);
+
+    if (session.accessToken.isEmpty) {
+      throw Exception(
+        'Server tidak mengembalikan access token setelah registrasi.',
+      );
+    }
+
+    return session;
+  }
+
   Future<Map<String, dynamic>> login({
     required String noHp,
     required String password,

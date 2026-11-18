@@ -89,7 +89,7 @@ export async function registerUser(data) {
       password,
     });
 
-    return publicUser(user);
+    return createAuthResult(user);
   } catch (error) {
     if (error.code === '23505') {
       throw new AppError('Nomor WhatsApp sudah terdaftar.', 409);

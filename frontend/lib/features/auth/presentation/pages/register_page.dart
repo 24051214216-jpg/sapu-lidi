@@ -1,7 +1,11 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../../core/network/dio_client.dart';
+import '../../../../core/storage/secure_storage.dart';
 import '../../../../core/widgets/app_primary_button.dart';
+import '../../data/datasources/auth_remote_datasource.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -25,11 +29,15 @@ class _RegisterPageState extends State<RegisterPage> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
-  String _selectedBlock = 'B';
+  late final Dio _dio;
+  late final AuthRemoteDataSource _authRemoteDataSource;
+  final SecureStorage _secureStorage = SecureStorage();
+
+  String? _selectedBlock;
 
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
-  bool _agreementAccepted = true;
+  bool _agreementAccepted = false;
   bool _isLoading = false;
 
   static const Map<String, String> _blocks = {
@@ -42,6 +50,8 @@ class _RegisterPageState extends State<RegisterPage> {
   @override
   void initState() {
     super.initState();
+    _dio = DioClient.create();
+    _authRemoteDataSource = AuthRemoteDataSource(_dio);
     _passwordController.addListener(_refreshPasswordStrength);
   }
 
@@ -57,11 +67,18 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 
   void _refreshPasswordStrength() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+
+    setState(() {});
+
+    if (_confirmPasswordController.text.isNotEmpty) {
+      _formKey.currentState?.validate();
+    }
   }
 
   int get _passwordStrength {
     final password = _passwordController.text;
+
     if (password.isEmpty) return 0;
 
     var score = 0;
@@ -74,6 +91,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
     if (score <= 2) return 1;
     if (score <= 3) return 2;
+
     return 3;
   }
 
@@ -104,34 +122,58 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 
   String? _validateName(String? value) {
-    if (value == null || value.trim().isEmpty) {
+    final name = value?.trim() ?? '';
+
+    if (name.isEmpty) {
       return 'Nama lengkap wajib diisi';
     }
 
-    if (value.trim().length < 3) {
+    if (name.length < 3) {
       return 'Nama minimal 3 karakter';
+    }
+
+    if (RegExp(r'[0-9]').hasMatch(name)) {
+      return 'Nama tidak boleh mengandung angka';
     }
 
     return null;
   }
 
   String? _validatePhone(String? value) {
-    final phone = value?.replaceAll(RegExp(r'\D'), '') ?? '';
+    final phone = (value ?? '').replaceAll(RegExp(r'\D'), '');
 
     if (phone.isEmpty) {
       return 'Nomor WhatsApp wajib diisi';
     }
 
+    if (phone.startsWith('0')) {
+      return 'Hilangkan angka 0 setelah kode +62';
+    }
+
     if (phone.length < 9 || phone.length > 13) {
-      return 'Masukkan nomor HP yang valid';
+      return 'Nomor HP harus terdiri dari 9-13 digit';
+    }
+
+    return null;
+  }
+
+  String? _validateBlock(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Silakan pilih blok rumah';
     }
 
     return null;
   }
 
   String? _validateHouseNumber(String? value) {
-    if (value == null || value.trim().isEmpty) {
+    final houseNumber = value?.trim() ?? '';
+
+    if (houseNumber.isEmpty) {
       return 'Nomor rumah wajib diisi';
+    }
+
+    if (houseNumber.length > 15) {
+      return 'Nomor rumah maksimal 15 karakter';
     }
 
     return null;
@@ -161,103 +203,169 @@ class _RegisterPageState extends State<RegisterPage> {
     return null;
   }
 
+  String _normalizePhoneNumber(String value) {
+    var digits = value.replaceAll(RegExp(r'\D'), '');
+
+    if (digits.startsWith('0')) {
+      digits = digits.substring(1);
+    }
+
+    if (digits.startsWith('62')) {
+      digits = digits.substring(2);
+    }
+
+    return '+62$digits';
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
+
   Future<void> _handleRegister() async {
     FocusScope.of(context).unfocus();
 
-    if (!_formKey.currentState!.validate()) return;
+    final isValid = _formKey.currentState?.validate() ?? false;
+
+    if (!isValid) return;
 
     if (!_agreementAccepted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Anda harus menyetujui syarat dan ketentuan.',
-          ),
-        ),
-      );
+      _showMessage('Anda harus menyetujui syarat dan ketentuan.');
       return;
     }
 
     setState(() => _isLoading = true);
 
-    // TODO: Hubungkan dengan API registrasi warga.
-    await Future.delayed(const Duration(milliseconds: 900));
+    try {
+      final session = await _authRemoteDataSource.register(
+        nama: _nameController.text.trim(),
+        noHp: _normalizePhoneNumber(_phoneController.text),
+        blokRumah: _selectedBlock!,
+        noRumah: _houseNumberController.text.trim(),
+        password: _passwordController.text,
+      );
 
-    if (!mounted) return;
+      final role = session.user['role']?.toString().toUpperCase();
+      final status = session.user['status']?.toString().toUpperCase();
 
-    setState(() => _isLoading = false);
-
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(22),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 66,
-                height: 66,
-                decoration: const BoxDecoration(
-                  color: _greenLight,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.check_circle_rounded,
-                  color: _green,
-                  size: 38,
-                ),
-              ),
-              const SizedBox(height: 18),
-              Text(
-                'Pendaftaran Berhasil',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 19,
-                  fontWeight: FontWeight.w800,
-                  color: _text,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Formulir pendaftaran berhasil divalidasi. Proses penyimpanan akun ke server belum dihubungkan.',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
-                  fontSize: 12,
-                  height: 1.6,
-                  color: _muted,
-                ),
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: () {
-                    Navigator.pop(dialogContext);
-                    Navigator.pop(context);
-                  },
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _green,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(13),
-                    ),
-                  ),
-                  child: Text(
-                    'Kembali ke Login',
-                    style: GoogleFonts.inter(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+      if (role != 'WARGA' || status != 'AKTIF') {
+        throw Exception(
+          'Pendaftaran tersimpan, tetapi server tidak mengembalikan '
+          'status akun AKTIF. Silakan hubungi administrator.',
         );
-      },
-    );
+      }
+
+      if (session.accessToken.isEmpty) {
+        throw Exception(
+          'Pendaftaran berhasil, tetapi access token tidak diterima.',
+        );
+      }
+
+      await _secureStorage.saveAccessToken(session.accessToken);
+
+      if (!mounted) return;
+
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(22),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 66,
+                  height: 66,
+                  decoration: const BoxDecoration(
+                    color: _greenLight,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.verified_rounded,
+                    color: _green,
+                    size: 38,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  'Pendaftaran Berhasil',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 19,
+                    fontWeight: FontWeight.w800,
+                    color: _text,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Akun warga Anda berhasil dibuat dan sudah AKTIF. '
+                  'Sesi autentikasi juga telah disimpan dengan aman. '
+                  'Anda tidak perlu menunggu persetujuan RT.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    height: 1.6,
+                    color: _muted,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () {
+                      Navigator.pop(dialogContext);
+                      Navigator.pop(context);
+                    },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _green,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(13),
+                      ),
+                    ),
+                    child: Text(
+                      'Selesai',
+                      style: GoogleFonts.inter(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      );
+    } on DioException catch (error) {
+      final responseData = error.response?.data;
+      final message = responseData is Map
+          ? responseData['message']?.toString()
+          : null;
+
+      _showMessage(
+        message ?? 'Tidak dapat terhubung ke server. Periksa koneksi API.',
+      );
+    } catch (error) {
+      _showMessage(
+        error.toString().replaceFirst('Exception: ', ''),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   @override
@@ -332,7 +440,7 @@ class _RegisterPageState extends State<RegisterPage> {
               ),
               const SizedBox(width: 5),
               Text(
-                'Valid KTP',
+                'Data Warga',
                 style: GoogleFonts.inter(
                   fontSize: 9,
                   fontWeight: FontWeight.w800,
@@ -420,7 +528,8 @@ class _RegisterPageState extends State<RegisterPage> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Lengkapi data diri Anda untuk menikmati layanan warga yang lebih mudah, cepat, dan transparan.',
+            'Lengkapi data diri Anda untuk menikmati layanan '
+            'warga yang lebih mudah, cepat, dan transparan.',
             style: GoogleFonts.inter(
               fontSize: 11,
               height: 1.6,
@@ -469,7 +578,7 @@ class _RegisterPageState extends State<RegisterPage> {
               ),
             ),
             const SizedBox(height: 22),
-            _fieldLabel('Nama Lengkap (Sesuai KTP)'),
+            _fieldLabel('Nama Lengkap'),
             const SizedBox(height: 8),
             _buildTextField(
               controller: _nameController,
@@ -477,6 +586,7 @@ class _RegisterPageState extends State<RegisterPage> {
               icon: Icons.person_outline_rounded,
               validator: _validateName,
               keyboardType: TextInputType.name,
+              textCapitalization: TextCapitalization.words,
             ),
             const SizedBox(height: 17),
             _fieldLabel('Nomor WhatsApp Aktif'),
@@ -514,7 +624,7 @@ class _RegisterPageState extends State<RegisterPage> {
               label: 'Daftar Sekarang',
               icon: Icons.arrow_forward_rounded,
               isLoading: _isLoading,
-              onPressed: _handleRegister,
+              onPressed: _isLoading ? null : _handleRegister,
             ),
             const SizedBox(height: 16),
             _buildTrustNote(),
@@ -541,11 +651,13 @@ class _RegisterPageState extends State<RegisterPage> {
     required IconData icon,
     String? Function(String?)? validator,
     TextInputType? keyboardType,
+    TextCapitalization textCapitalization = TextCapitalization.none,
   }) {
     return TextFormField(
       controller: controller,
       validator: validator,
       keyboardType: keyboardType,
+      textCapitalization: textCapitalization,
       style: GoogleFonts.inter(
         fontSize: 13,
         color: _text,
@@ -557,55 +669,93 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
+  // Nomor WhatsApp: pesan validasi diletakkan di luar border input.
   Widget _buildPhoneField() {
-    return Container(
-      decoration: BoxDecoration(
-        border: Border.all(color: _outline),
-        borderRadius: BorderRadius.circular(13),
-      ),
-      child: Row(
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 13),
-            child: Text(
-              '+62',
-              style: GoogleFonts.inter(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: _text,
+    return FormField<String>(
+      initialValue: _phoneController.text,
+      validator: _validatePhone,
+      builder: (fieldState) {
+        final hasError = fieldState.hasError;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border.all(
+                  color: hasError ? Colors.red : _outline,
+                  width: hasError ? 1.2 : 1,
+                ),
+                borderRadius: BorderRadius.circular(13),
+              ),
+              child: Row(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 13,
+                    ),
+                    child: Text(
+                      '+62',
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: _text,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    width: 1,
+                    height: 24,
+                    color: _outline,
+                  ),
+                  Expanded(
+                    child: TextField(
+                      controller: _phoneController,
+                      keyboardType: TextInputType.phone,
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        color: _text,
+                      ),
+                      onChanged: (value) {
+                        fieldState.didChange(value);
+                        if (fieldState.hasError) {
+                          fieldState.validate();
+                        }
+                      },
+                      decoration: InputDecoration(
+                        hintText: '812-3456-7890',
+                        hintStyle: GoogleFonts.inter(
+                          fontSize: 12,
+                          color: const Color(0xFF98A2B3),
+                        ),
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 13,
+                          vertical: 15,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-          Container(
-            width: 1,
-            height: 24,
-            color: _outline,
-          ),
-          Expanded(
-            child: TextFormField(
-              controller: _phoneController,
-              keyboardType: TextInputType.phone,
-              validator: _validatePhone,
-              style: GoogleFonts.inter(
-                fontSize: 13,
-                color: _text,
-              ),
-              decoration: InputDecoration(
-                hintText: '812-3456-7890',
-                hintStyle: GoogleFonts.inter(
-                  fontSize: 12,
-                  color: const Color(0xFF98A2B3),
-                ),
-                border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 13,
-                  vertical: 15,
+            if (hasError) ...[
+              const SizedBox(height: 6),
+              Padding(
+                padding: const EdgeInsets.only(left: 12),
+                child: Text(
+                  fieldState.errorText!,
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    color: Colors.red,
+                  ),
                 ),
               ),
-            ),
-          ),
-        ],
-      ),
+            ],
+          ],
+        );
+      },
     );
   }
 
@@ -613,6 +763,14 @@ class _RegisterPageState extends State<RegisterPage> {
     return DropdownButtonFormField<String>(
       initialValue: _selectedBlock,
       isExpanded: true,
+      validator: _validateBlock,
+      hint: Text(
+        'Pilih blok rumah',
+        style: GoogleFonts.inter(
+          fontSize: 12,
+          color: const Color(0xFF98A2B3),
+        ),
+      ),
       decoration: _inputDecoration(
         hint: 'Pilih blok rumah',
         icon: Icons.location_on_outlined,
@@ -630,9 +788,7 @@ class _RegisterPageState extends State<RegisterPage> {
         );
       }).toList(),
       onChanged: (value) {
-        if (value != null) {
-          setState(() => _selectedBlock = value);
-        }
+        setState(() => _selectedBlock = value);
       },
     );
   }
@@ -899,7 +1055,8 @@ class _RegisterPageState extends State<RegisterPage> {
           const SizedBox(width: 9),
           Expanded(
             child: Text(
-              'Data pribadi Anda akan digunakan untuk keperluan administrasi warga dan dikelola oleh pengurus RT.',
+              'Data pribadi Anda akan digunakan untuk keperluan '
+              'administrasi warga dan dikelola oleh pengurus RT.',
               style: GoogleFonts.inter(
                 fontSize: 10,
                 height: 1.5,
