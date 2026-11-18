@@ -9,3 +9,6 @@ Thumbs.db
 .env
 *.env.local
 !.env.example
+/frontend/.dart_tool/
+/frontend/build/
+/sapulidi-source.zip
