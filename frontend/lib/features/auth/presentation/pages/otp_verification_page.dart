@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../core/network/dio_client.dart';
 import '../../../../core/storage/secure_storage.dart';
+import '../../../home/presentation/pages/main_shell_page.dart';
 import '../../data/datasources/auth_remote_datasource.dart';
 
 class OtpVerificationPage extends StatefulWidget {
@@ -34,9 +35,12 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
 
   Timer? _timer;
 
-  int _remainingSeconds = 300;
+  int _remainingSeconds = 0;
+
   bool _isVerifying = false;
   bool _isResending = false;
+  bool _isRequestingInitialOtp = true;
+  bool _initialOtpFailed = false;
 
   @override
   void initState() {
@@ -45,9 +49,7 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
     _dio = DioClient.create();
     _authDataSource = AuthRemoteDataSource(_dio);
 
-    _remainingSeconds = widget.expiresIn > 0 ? widget.expiresIn : 300;
-
-    _startTimer();
+    _requestInitialOtp();
   }
 
   @override
@@ -55,6 +57,42 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
     _timer?.cancel();
     _otpController.dispose();
     super.dispose();
+  }
+
+  Future<void> _requestInitialOtp() async {
+    setState(() {
+      _isRequestingInitialOtp = true;
+      _initialOtpFailed = false;
+    });
+
+    try {
+      final expiresIn = await _authDataSource.requestOtp(
+        challengeId: widget.challengeId,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _remainingSeconds = expiresIn;
+        _isRequestingInitialOtp = false;
+        _initialOtpFailed = false;
+      });
+
+      _startTimer();
+
+      _showMessage(
+        'Kode OTP berhasil dikirim. Periksa terminal backend untuk pengujian.',
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _isRequestingInitialOtp = false;
+        _initialOtpFailed = true;
+      });
+
+      _showMessage(_errorMessage(error));
+    }
   }
 
   void _startTimer() {
@@ -83,6 +121,20 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
     );
   }
 
+  String _errorMessage(Object error) {
+    if (error is DioException) {
+      final data = error.response?.data;
+
+      if (data is Map && data['message'] != null) {
+        return data['message'].toString();
+      }
+
+      return 'Tidak dapat menghubungi server.';
+    }
+
+    return error.toString().replaceFirst('Exception: ', '');
+  }
+
   void _showMessage(String message) {
     if (!mounted) return;
 
@@ -99,6 +151,11 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
   Future<void> _verifyOtp() async {
     FocusScope.of(context).unfocus();
 
+    if (_isRequestingInitialOtp || _initialOtpFailed) {
+      _showMessage('Pastikan kode OTP sudah berhasil diminta.');
+      return;
+    }
+
     final otp = _otpController.text.trim();
 
     if (!RegExp(r'^\d{6}$').hasMatch(otp)) {
@@ -114,25 +171,21 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
         otp: otp,
       );
 
-      await SecureStorage().saveAccessToken(
-        session.accessToken,
-      );
+      final storage = SecureStorage();
+
+      await storage.saveAccessToken(session.accessToken);
+      await storage.saveUser(session.user);
 
       if (!mounted) return;
 
-      Navigator.pop(context, true);
-    } on DioException catch (error) {
-      final message = error.response?.data is Map
-          ? error.response?.data['message']?.toString()
-          : null;
-
-      _showMessage(
-        message ?? 'Tidak dapat menghubungi server.',
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (_) => const MainShellPage(),
+        ),
+        (route) => false,
       );
     } catch (error) {
-      _showMessage(
-        error.toString().replaceFirst('Exception: ', ''),
-      );
+      _showMessage(_errorMessage(error));
     } finally {
       if (mounted) {
         setState(() => _isVerifying = false);
@@ -141,32 +194,28 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
   }
 
   Future<void> _resendOtp() async {
+    if (_isResending || _remainingSeconds > 0) return;
+
     setState(() => _isResending = true);
 
     try {
-      await _authDataSource.requestOtp(
+      final expiresIn = await _authDataSource.requestOtp(
         challengeId: widget.challengeId,
       );
 
       if (!mounted) return;
 
       setState(() {
-        _remainingSeconds = 300;
+        _remainingSeconds = expiresIn;
+        _initialOtpFailed = false;
       });
 
+      _otpController.clear();
       _startTimer();
 
       _showMessage('Kode OTP berhasil dikirim ulang.');
-    } on DioException catch (error) {
-      final message = error.response?.data is Map
-          ? error.response?.data['message']?.toString()
-          : null;
-
-      _showMessage(
-        message ?? 'Gagal mengirim ulang kode OTP.',
-      );
     } catch (error) {
-      _showMessage(error.toString());
+      _showMessage(_errorMessage(error));
     } finally {
       if (mounted) {
         setState(() => _isResending = false);
@@ -245,85 +294,120 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
                 ),
               ),
               const SizedBox(height: 35),
-              TextField(
-                controller: _otpController,
-                keyboardType: TextInputType.number,
-                maxLength: 6,
-                autofocus: true,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
-                  fontSize: 27,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 12,
-                  color: _green,
-                ),
-                decoration: InputDecoration(
-                  counterText: '',
-                  hintText: '------',
-                  hintStyle: GoogleFonts.inter(
-                    fontSize: 24,
-                    letterSpacing: 9,
-                    color: const Color(0xFFBECABD),
-                  ),
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(
-                      color: Color(0xFFBECABD),
-                    ),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(
-                      color: Color(0xFFBECABD),
-                    ),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(
-                      color: _green,
-                      width: 1.5,
-                    ),
+              if (_isRequestingInitialOtp) ...[
+                const CircularProgressIndicator(color: _green),
+                const SizedBox(height: 12),
+                Text(
+                  'Meminta kode OTP...',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    color: const Color(0xFF667085),
                   ),
                 ),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                _remainingSeconds > 0
-                    ? 'Kode berlaku selama $_formattedTime'
-                    : 'Kode OTP telah kedaluwarsa.',
-                style: GoogleFonts.inter(
-                  fontSize: 12,
-                  color: const Color(0xFF667085),
+              ] else if (_initialOtpFailed) ...[
+                const Icon(
+                  Icons.error_outline_rounded,
+                  color: Colors.red,
+                  size: 34,
                 ),
-              ),
-              const SizedBox(height: 10),
-              TextButton(
-                onPressed:
-                    _remainingSeconds == 0 && !_isResending ? _resendOtp : null,
-                child: _isResending
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : Text(
-                        'Kirim Ulang Kode OTP',
-                        style: GoogleFonts.inter(
-                          fontWeight: FontWeight.w800,
-                          color: _green,
-                        ),
+                const SizedBox(height: 8),
+                Text(
+                  'Kode OTP belum berhasil diminta.',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    color: Colors.red,
+                  ),
+                ),
+                TextButton(
+                  onPressed: _requestInitialOtp,
+                  child: const Text('Coba Lagi'),
+                ),
+              ] else ...[
+                TextField(
+                  controller: _otpController,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  autofocus: true,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(
+                    fontSize: 27,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 12,
+                    color: _green,
+                  ),
+                  decoration: InputDecoration(
+                    counterText: '',
+                    hintText: '------',
+                    hintStyle: GoogleFonts.inter(
+                      fontSize: 24,
+                      letterSpacing: 9,
+                      color: const Color(0xFFBECABD),
+                    ),
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: const BorderSide(
+                        color: Color(0xFFBECABD),
                       ),
-              ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: const BorderSide(
+                        color: Color(0xFFBECABD),
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: const BorderSide(
+                        color: _green,
+                        width: 1.5,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  _remainingSeconds > 0
+                      ? 'Kode berlaku selama $_formattedTime'
+                      : 'Kode OTP telah kedaluwarsa.',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    color: const Color(0xFF667085),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextButton(
+                  onPressed: _remainingSeconds == 0 && !_isResending
+                      ? _resendOtp
+                      : null,
+                  child: _isResending
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : Text(
+                          'Kirim Ulang Kode OTP',
+                          style: GoogleFonts.inter(
+                            fontWeight: FontWeight.w800,
+                            color: _green,
+                          ),
+                        ),
+                ),
+              ],
               const SizedBox(height: 28),
               SizedBox(
                 width: double.infinity,
                 height: 54,
                 child: ElevatedButton(
-                  onPressed: _isVerifying ? null : _verifyOtp,
+                  onPressed: _isVerifying ||
+                          _isRequestingInitialOtp ||
+                          _initialOtpFailed
+                      ? null
+                      : _verifyOtp,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _green,
                     foregroundColor: Colors.white,

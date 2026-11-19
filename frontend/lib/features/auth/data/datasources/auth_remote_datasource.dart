@@ -66,7 +66,7 @@ class AuthRemoteDataSource {
     if (body['success'] != true || challengeId == null || challengeId.isEmpty) {
       throw Exception(
         body['message']?.toString() ??
-            'Respons login tidak memiliki challenge OTP.',
+            'Server tidak memberikan challenge verifikasi OTP.',
       );
     }
 
@@ -77,7 +77,7 @@ class AuthRemoteDataSource {
     };
   }
 
-  Future<void> requestOtp({
+  Future<int> requestOtp({
     required String challengeId,
   }) async {
     final response = await _dio.post(
@@ -91,9 +91,11 @@ class AuthRemoteDataSource {
 
     if (body['success'] != true) {
       throw Exception(
-        body['message']?.toString() ?? 'Gagal mengirim ulang kode OTP.',
+        body['message']?.toString() ?? 'Gagal mengirim kode OTP.',
       );
     }
+
+    return int.tryParse(body['expiresIn']?.toString() ?? '') ?? 300;
   }
 
   Future<AuthSessionModel> verifyOtp({

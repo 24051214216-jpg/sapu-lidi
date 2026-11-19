@@ -1,5 +1,5 @@
-
 import { z } from 'zod';
+
 import {
   isValidPhoneNumber,
   normalizePhoneNumber,
@@ -43,20 +43,49 @@ export const loginSchema = z.object({
   password: z.string().min(1, 'Password wajib diisi.'),
 });
 
-export const otpRequestSchema = z.object({
-  noHp: phoneSchema,
-  purpose: z.enum(['LOGIN', 'RESET_PASSWORD']),
-});
+/*
+ * LOGIN:
+ * { challengeId }
+ *
+ * RESET_PASSWORD:
+ * { noHp, purpose }
+ */
+export const otpRequestSchema = z.union([
+  z.object({
+    challengeId: z.string().uuid('Challenge login tidak valid.'),
+  }),
 
-export const otpVerifySchema = z.object({
-  noHp: phoneSchema,
-  purpose: z.enum(['LOGIN', 'RESET_PASSWORD']),
-  otp: z.string()
-    .regex(/^[0-9]{6}$/, 'OTP harus terdiri dari 6 digit.'),
-});
+  z.object({
+    noHp: phoneSchema,
+    purpose: z.literal('RESET_PASSWORD'),
+  }),
+]);
+
+/*
+ * LOGIN:
+ * { challengeId, otp }
+ *
+ * RESET_PASSWORD:
+ * { noHp, purpose, otp }
+ */
+export const otpVerifySchema = z.union([
+  z.object({
+    challengeId: z.string().uuid('Challenge login tidak valid.'),
+    otp: z.string()
+      .regex(/^[0-9]{6}$/, 'OTP harus terdiri dari 6 digit.'),
+  }),
+
+  z.object({
+    noHp: phoneSchema,
+    purpose: z.literal('RESET_PASSWORD'),
+    otp: z.string()
+      .regex(/^[0-9]{6}$/, 'OTP harus terdiri dari 6 digit.'),
+  }),
+]);
 
 export const resetPasswordSchema = z.object({
   resetToken: z.string().min(1, 'Reset token wajib diisi.'),
+
   newPassword: z.string()
     .min(8, 'Password minimal 8 karakter.')
     .max(72, 'Password maksimal 72 karakter.'),

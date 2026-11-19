@@ -1,4 +1,6 @@
+
 import { pool } from '../config/database.js';
+import { normalizePhoneNumber } from '../utils/phone.js';
 
 const USER_COLUMNS = `
   id,
@@ -15,13 +17,46 @@ const USER_COLUMNS = `
   "updatedAt"
 `;
 
+/**
+ * Mencari akun berdasarkan nomor WhatsApp.
+ *
+ * Mendukung format:
+ * 08123456789
+ * 8123456789
+ * 628123456789
+ * +628123456789
+ * 00628123456789
+ *
+ * Tidak mengubah nomor yang sudah tersimpan di database.
+ */
 export async function findUserByPhone(phone, client = pool) {
+  const normalizedPhone = normalizePhoneNumber(phone);
+
+  if (!normalizedPhone) {
+    return null;
+  }
+
+  const digits = normalizedPhone.replace(/\D/g, '');
+
+  const phoneVariants = [
+    ...new Set([
+      digits,
+      `0${digits.slice(2)}`,
+      digits.slice(2),
+      `00${digits}`,
+    ]),
+  ];
+
   const result = await client.query(
     `SELECT ${USER_COLUMNS}, password, "deletedAt"
      FROM public."User"
-     WHERE "noHp" = $1
+     WHERE regexp_replace("noHp", '\\D', '', 'g') = ANY($1::text[])
+     ORDER BY array_position(
+       $1::text[],
+       regexp_replace("noHp", '\\D', '', 'g')
+     )
      LIMIT 1`,
-    [phone],
+    [phoneVariants],
   );
 
   return result.rows[0] || null;
