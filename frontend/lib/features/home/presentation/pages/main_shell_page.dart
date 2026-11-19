@@ -13,7 +13,11 @@ class MainShellPage extends StatefulWidget {
 }
 
 class _MainShellPageState extends State<MainShellPage> {
-  static const Color _green = Color(0xFF006130);
+  static const Color _green = Color(0xFF107C41);
+  static const Color _greenDark = Color(0xFF084C27);
+  static const Color _background = Color(0xFFF4FBF6);
+  static const Color _text = Color(0xFF17251C);
+  static const Color _muted = Color(0xFF718078);
 
   final SecureStorage _storage = SecureStorage();
 
@@ -28,14 +32,22 @@ class _MainShellPageState extends State<MainShellPage> {
   }
 
   Future<void> _loadUser() async {
-    final user = await _storage.getUser();
+    try {
+      final user = await _storage.getUser();
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    setState(() {
-      _user = user;
-      _isLoading = false;
-    });
+      setState(() {
+        _user = user;
+        _isLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   Future<void> _logout() async {
@@ -43,9 +55,18 @@ class _MainShellPageState extends State<MainShellPage> {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('Keluar dari akun?'),
-          content: const Text(
+          title: Text(
+            'Keluar dari akun?',
+            style: GoogleFonts.plusJakartaSans(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          content: Text(
             'Kamu perlu login kembali untuk mengakses layanan warga.',
+            style: GoogleFonts.inter(
+              fontSize: 13,
+              height: 1.5,
+            ),
           ),
           actions: [
             TextButton(
@@ -78,210 +99,144 @@ class _MainShellPageState extends State<MainShellPage> {
     );
   }
 
-  String get _pageTitle {
-    switch (_selectedIndex) {
-      case 0:
-        return 'Beranda';
-      case 1:
-        return 'Layanan';
-      case 2:
-        return 'Aktivitas';
-      default:
-        return 'Profil';
-    }
+  void _navigateTo(int index) {
+    if (index < 0 || index > 4) return;
+
+    setState(() {
+      _selectedIndex = index;
+    });
   }
 
-  Widget _buildCurrentPage() {
-    switch (_selectedIndex) {
-      case 0:
-        return HomePage(user: _user);
-
-      case 1:
-        return _buildPlaceholder(
-          Icons.grid_view_rounded,
-          'Layanan Warga',
-          'Menu layanan warga akan dikembangkan pada tahap berikutnya.',
-        );
-
-      case 2:
-        return _buildPlaceholder(
-          Icons.history_rounded,
-          'Aktivitas',
-          'Riwayat aktivitas warga akan ditampilkan di sini.',
-        );
-
-      default:
-        return _buildProfile();
-    }
-  }
-
-  Widget _buildPlaceholder(
-    IconData icon,
-    String title,
-    String description,
-  ) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 54,
-              color: _green,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              title,
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 19,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              description,
-              textAlign: TextAlign.center,
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                color: Colors.black54,
-                height: 1.6,
-              ),
-            ),
-          ],
+  void _showSosDialog() {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(
+          Icons.sos_rounded,
+          size: 38,
+          color: Color(0xFFC62828),
         ),
-      ),
-    );
-  }
-
-  Widget _buildProfile() {
-    final nama = _user['nama']?.toString() ?? 'Warga';
-    final noHp = _user['noHp']?.toString() ?? '-';
-    final blok = _user['blokRumah']?.toString() ?? '-';
-    final rumah = _user['noRumah']?.toString() ?? '-';
-
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        CircleAvatar(
-          radius: 38,
-          backgroundColor: const Color(0xFFEAF5ED),
-          child: Text(
-            nama.isNotEmpty ? nama[0].toUpperCase() : 'W',
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 28,
-              fontWeight: FontWeight.w800,
-              color: _green,
-            ),
-          ),
-        ),
-        const SizedBox(height: 14),
-        Text(
-          nama,
-          textAlign: TextAlign.center,
+        title: Text(
+          'Bantuan Darurat',
           style: GoogleFonts.plusJakartaSans(
-            fontSize: 20,
             fontWeight: FontWeight.w800,
           ),
         ),
-        const SizedBox(height: 5),
-        Text(
-          'Warga SapuLidi',
-          textAlign: TextAlign.center,
+        content: Text(
+          'Fitur kontak darurat lingkungan belum terhubung. '
+          'Jika terjadi keadaan darurat, segera hubungi layanan '
+          'darurat resmi yang sesuai dengan kondisi kamu.',
           style: GoogleFonts.inter(
             fontSize: 12,
-            color: Colors.black54,
+            height: 1.6,
+            color: _muted,
           ),
         ),
-        const SizedBox(height: 25),
-        _profileItem('Nomor WhatsApp', noHp),
-        _profileItem('Blok Rumah', blok),
-        _profileItem('Nomor Rumah', rumah),
-        _profileItem(
-          'Status Akun',
-          _user['status']?.toString() ?? '-',
-        ),
-        _profileItem(
-          'Role',
-          _user['role']?.toString() ?? '-',
-        ),
-        const SizedBox(height: 24),
-        OutlinedButton.icon(
-          onPressed: _logout,
-          icon: const Icon(Icons.logout_rounded),
-          label: const Text('Keluar dari Akun'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: Colors.red,
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            side: const BorderSide(color: Colors.red),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _profileItem(String label, String value) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(13),
-        border: Border.all(
-          color: const Color(0xFFE8EEE9),
-        ),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                color: Colors.black54,
-              ),
-            ),
-          ),
-          Flexible(
-            child: Text(
-              value,
-              textAlign: TextAlign.end,
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Tutup'),
           ),
         ],
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(color: _green),
-        ),
-      );
+  String get _pageTitle {
+    switch (_selectedIndex) {
+      case 0:
+        return 'Beranda Warga';
+      case 1:
+        return 'Keuangan Warga';
+      case 2:
+        return 'Inventaris Warga';
+      case 3:
+        return 'Layanan Warga';
+      case 4:
+        return 'Profil Warga';
+      default:
+        return 'SapuLidi';
+    }
+  }
+
+  Widget _buildCurrentPage() {
+    switch (_selectedIndex) {
+      case 0:
+        return HomePage(
+          user: _user,
+          onNavigate: _navigateTo,
+          onSos: _showSosDialog,
+        );
+
+      case 1:
+        return const _InformationPage(
+          icon: Icons.account_balance_wallet_outlined,
+          title: 'Keuangan Warga',
+          subtitle: 'Transparansi kas dan iuran lingkungan',
+          description: 'Informasi saldo kas, pemasukan, pengeluaran, '
+              'dan pembayaran iuran warga akan ditampilkan di sini.',
+          information: 'Data keuangan belum tersedia.',
+        );
+
+      case 2:
+        return const _InformationPage(
+          icon: Icons.inventory_2_outlined,
+          title: 'Inventaris Warga',
+          subtitle: 'Kelola barang milik bersama',
+          description: 'Daftar inventaris, ketersediaan barang, '
+              'dan informasi peminjaman akan ditampilkan di sini.',
+          information: 'Data inventaris belum tersedia.',
+        );
+
+      case 3:
+        return const _ServicesPage();
+
+      case 4:
+        return _buildProfile();
+
+      default:
+        return HomePage(
+          user: _user,
+          onNavigate: _navigateTo,
+          onSos: _showSosDialog,
+        );
+    }
+  }
+
+  Widget _buildPageHeader() {
+    if (_selectedIndex == 0) {
+      return const SizedBox.shrink();
     }
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFFAF8FF),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
-        title: Text(
-          _pageTitle,
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-            color: _green,
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(17, 12, 17, 12),
+      child: Row(
+        children: [
+          Container(
+            width: 39,
+            height: 39,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE8FFF0),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.home_work_rounded,
+              color: _green,
+              size: 21,
+            ),
           ),
-        ),
-        actions: [
+          const SizedBox(width: 11),
+          Expanded(
+            child: Text(
+              _pageTitle,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: _greenDark,
+              ),
+            ),
+          ),
           IconButton(
             tooltip: 'Keluar',
             onPressed: _logout,
@@ -292,34 +247,530 @@ class _MainShellPageState extends State<MainShellPage> {
           ),
         ],
       ),
-      body: _buildCurrentPage(),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) {
-          setState(() => _selectedIndex = index);
-        },
-        backgroundColor: Colors.white,
-        indicatorColor: const Color(0xFFE1F2E5),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home_rounded),
-            label: 'Beranda',
+    );
+  }
+
+  Widget _buildProfile() {
+    final nama = _user['nama']?.toString().trim().isNotEmpty == true
+        ? _user['nama'].toString()
+        : 'Warga SapuLidi';
+
+    final noHp = _user['noHp']?.toString() ?? '-';
+    final blok = _user['blokRumah']?.toString() ?? '-';
+    final rumah = _user['noRumah']?.toString() ?? '-';
+    final status = _user['status']?.toString() ?? '-';
+    final role = _user['role']?.toString() ?? '-';
+
+    final initial = nama.isEmpty ? 'W' : nama[0].toUpperCase();
+
+    return Container(
+      color: _background,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(17, 25, 17, 30),
+        children: [
+          Center(
+            child: Container(
+              width: 82,
+              height: 82,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8FFF0),
+                borderRadius: BorderRadius.circular(27),
+              ),
+              child: Center(
+                child: Text(
+                  initial,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 34,
+                    fontWeight: FontWeight.w800,
+                    color: _green,
+                  ),
+                ),
+              ),
+            ),
           ),
-          NavigationDestination(
-            icon: Icon(Icons.grid_view_outlined),
-            selectedIcon: Icon(Icons.grid_view_rounded),
-            label: 'Layanan',
+          const SizedBox(height: 15),
+          Text(
+            nama,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: _text,
+            ),
           ),
-          NavigationDestination(
-            icon: Icon(Icons.history_outlined),
-            selectedIcon: Icon(Icons.history_rounded),
-            label: 'Aktivitas',
+          const SizedBox(height: 5),
+          Text(
+            'Profil Warga SapuLidi',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.inter(
+              fontSize: 11,
+              color: _muted,
+            ),
           ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline_rounded),
-            selectedIcon: Icon(Icons.person_rounded),
-            label: 'Profil',
+          const SizedBox(height: 25),
+          _profileItem(
+            Icons.phone_android_rounded,
+            'Nomor WhatsApp',
+            noHp,
+          ),
+          _profileItem(
+            Icons.location_on_outlined,
+            'Blok Rumah',
+            blok,
+          ),
+          _profileItem(
+            Icons.home_outlined,
+            'Nomor Rumah',
+            rumah,
+          ),
+          _profileItem(
+            Icons.verified_user_outlined,
+            'Status Akun',
+            status,
+          ),
+          _profileItem(
+            Icons.badge_outlined,
+            'Role',
+            role,
+          ),
+          const SizedBox(height: 22),
+          OutlinedButton.icon(
+            onPressed: _logout,
+            icon: const Icon(Icons.logout_rounded),
+            label: const Text('Keluar dari Akun'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.red,
+              side: const BorderSide(color: Color(0xFFE9B7B7)),
+              padding: const EdgeInsets.symmetric(vertical: 15),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(13),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _profileItem(
+    IconData icon,
+    String label,
+    String value,
+  ) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(
+          color: const Color(0xFFDFEEE4),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 19, color: _green),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              label,
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                color: _muted,
+              ),
+            ),
+          ),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: _text,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNavItem({
+    required IconData icon,
+    required IconData selectedIcon,
+    required String label,
+    required int index,
+  }) {
+    final selected = _selectedIndex == index;
+
+    return Expanded(
+      child: InkWell(
+        onTap: () => _navigateTo(index),
+        child: SizedBox(
+          height: 65,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                selected ? selectedIcon : icon,
+                size: 22,
+                color: selected ? _green : _muted,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontSize: 9,
+                  fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
+                  color: selected ? _green : _muted,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottomNavigation() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 14,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 67,
+          child: Row(
+            children: [
+              _buildNavItem(
+                icon: Icons.home_outlined,
+                selectedIcon: Icons.home_rounded,
+                label: 'Beranda',
+                index: 0,
+              ),
+              _buildNavItem(
+                icon: Icons.account_balance_wallet_outlined,
+                selectedIcon: Icons.account_balance_wallet_rounded,
+                label: 'Keuangan',
+                index: 1,
+              ),
+              Expanded(
+                child: InkWell(
+                  onTap: _showSosDialog,
+                  child: SizedBox(
+                    height: 67,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 46,
+                          height: 46,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFC62828),
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFFC62828)
+                                    .withValues(alpha: 0.22),
+                                blurRadius: 9,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.sos_rounded,
+                            color: Colors.white,
+                            size: 27,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              _buildNavItem(
+                icon: Icons.inventory_2_outlined,
+                selectedIcon: Icons.inventory_2_rounded,
+                label: 'Inventaris',
+                index: 2,
+              ),
+              _buildNavItem(
+                icon: Icons.grid_view_rounded,
+                selectedIcon: Icons.grid_view_rounded,
+                label: 'Layanan',
+                index: 3,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        backgroundColor: _background,
+        body: Center(
+          child: CircularProgressIndicator(color: _green),
+        ),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: _background,
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            _buildPageHeader(),
+            Expanded(child: _buildCurrentPage()),
+          ],
+        ),
+      ),
+      bottomNavigationBar: _buildBottomNavigation(),
+    );
+  }
+}
+
+class _InformationPage extends StatelessWidget {
+  const _InformationPage({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.description,
+    required this.information,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String description;
+  final String information;
+
+  static const Color _green = Color(0xFF107C41);
+  static const Color _text = Color(0xFF17251C);
+  static const Color _muted = Color(0xFF718078);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: const Color(0xFFF4FBF6),
+      child: ListView(
+        padding: const EdgeInsets.all(17),
+        children: [
+          Text(
+            subtitle,
+            style: GoogleFonts.inter(
+              fontSize: 11,
+              color: _muted,
+            ),
+          ),
+          const SizedBox(height: 18),
+          Container(
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFFDFEEE4)),
+            ),
+            child: Column(
+              children: [
+                Container(
+                  width: 68,
+                  height: 68,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8FFF0),
+                    borderRadius: BorderRadius.circular(21),
+                  ),
+                  child: Icon(icon, size: 32, color: _green),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: _text,
+                  ),
+                ),
+                const SizedBox(height: 9),
+                Text(
+                  description,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    height: 1.6,
+                    color: _muted,
+                  ),
+                ),
+                const SizedBox(height: 22),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF0FAF3),
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.info_outline_rounded,
+                        size: 19,
+                        color: _green,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          information,
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            color: _green,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ServicesPage extends StatelessWidget {
+  const _ServicesPage();
+
+  static const Color _green = Color(0xFF107C41);
+  static const Color _text = Color(0xFF17251C);
+  static const Color _muted = Color(0xFF718078);
+
+  @override
+  Widget build(BuildContext context) {
+    final services = [
+      (
+        icon: Icons.description_outlined,
+        title: 'E-Surat',
+        description: 'Pengajuan surat administrasi warga.',
+      ),
+      (
+        icon: Icons.handyman_outlined,
+        title: 'Pinjam Alat',
+        description: 'Informasi peminjaman barang bersama.',
+      ),
+      (
+        icon: Icons.person_search_outlined,
+        title: 'Lapor Tamu',
+        description: 'Pelaporan informasi tamu lingkungan.',
+      ),
+      (
+        icon: Icons.forum_outlined,
+        title: 'Aspirasi',
+        description: 'Sampaikan saran dan masukan warga.',
+      ),
+    ];
+
+    return Container(
+      color: const Color(0xFFF4FBF6),
+      child: ListView(
+        padding: const EdgeInsets.all(17),
+        children: [
+          Text(
+            'Semua layanan warga dalam satu tempat.',
+            style: GoogleFonts.inter(
+              fontSize: 11,
+              color: _muted,
+            ),
+          ),
+          const SizedBox(height: 17),
+          for (final service in services)
+            Container(
+              margin: const EdgeInsets.only(bottom: 11),
+              padding: const EdgeInsets.all(15),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFDFEEE4)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8FFF0),
+                      borderRadius: BorderRadius.circular(13),
+                    ),
+                    child: Icon(
+                      service.icon,
+                      color: _green,
+                      size: 23,
+                    ),
+                  ),
+                  const SizedBox(width: 13),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          service.title,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: _text,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          service.description,
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            color: _muted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: _muted,
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 5),
+          Text(
+            'Informasi',
+            style: GoogleFonts.inter(
+              fontSize: 10,
+              color: _muted,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            'Halaman ini menampilkan daftar layanan. '
+            'Pengajuan dan transaksi layanan akan dihubungkan '
+            'dengan proses masing-masing ketika integrasinya tersedia.',
+            style: GoogleFonts.inter(
+              fontSize: 10,
+              height: 1.5,
+              color: _muted,
+            ),
           ),
         ],
       ),
