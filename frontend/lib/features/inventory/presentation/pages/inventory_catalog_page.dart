@@ -168,6 +168,9 @@ class _InventoryCatalogPageState extends State<InventoryCatalogPage> {
         totalStock: 5,
         condition: 'Baik',
       ),
+      // TAMBAHAN IMAGE URL UNTUK INV-007
+      imageUrl:
+          'https://i5.walmartimages.com/seo/CaliGreen-Tools-4-Foot-Portable-Folding-Multipurpose-Utility-Table-White_ca75cbcc-32f7-4ed5-969f-6fefada0f53f.11c7a7cb242f255ccfe2eb90abfce41a.jpeg',
       imageLabel: '5 Unit',
       unit: 'Unit',
       icon: Icons.table_restaurant_rounded,
@@ -184,6 +187,9 @@ class _InventoryCatalogPageState extends State<InventoryCatalogPage> {
         totalStock: 2,
         condition: 'Baik',
       ),
+      // TAMBAHAN IMAGE URL UNTUK INV-008
+      imageUrl:
+          'https://media.adeo.com/mkp/ebfd914ddfe6546d395fbf492097e65e/media.jpg?fit=bounds&format=jpg&height=3000&quality=80&width=3000',
       imageLabel: '2 Unit',
       unit: 'Unit',
       icon: Icons.lightbulb_rounded,
@@ -200,6 +206,9 @@ class _InventoryCatalogPageState extends State<InventoryCatalogPage> {
         totalStock: 2,
         condition: 'Baik',
       ),
+      // TAMBAHAN IMAGE URL UNTUK INV-009
+      imageUrl:
+          'https://images-na.ssl-images-amazon.com/images/I/61-T1AAys%2BL.jpg',
       imageLabel: '2 Unit',
       unit: 'Unit',
       icon: Icons.local_drink_rounded,
@@ -216,6 +225,9 @@ class _InventoryCatalogPageState extends State<InventoryCatalogPage> {
         totalStock: 2,
         condition: 'Baik',
       ),
+      // TAMBAHAN IMAGE URL UNTUK INV-010
+      imageUrl:
+          'https://assets.wfcdn.com/im/72488607/compr-r85/2490/249078902/5%2BCore%2BMegaphone%2BBullhorn%2BSpeaker%2B20W%2BBull%2BHorn%2BBattery%2BPower%2BCheer%2BMegafono%2B300%2BMetres%2BRange%2BLoudspeaker.jpg',
       imageLabel: '2 Unit',
       unit: 'Unit',
       icon: Icons.campaign_outlined,
