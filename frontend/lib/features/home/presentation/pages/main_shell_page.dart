@@ -3,8 +3,8 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../core/storage/secure_storage.dart';
 import '../../../onboarding/presentation/pages/onboarding_page.dart';
+import '../../../finance/presentation/pages/finance_page.dart';
 import '../../../inventory/presentation/pages/inventory_catalog_page.dart';
-import '../../../emergency/presentation/pages/sos_page.dart';
 import 'home_page.dart';
 
 class MainShellPage extends StatefulWidget {
@@ -109,10 +109,37 @@ class _MainShellPageState extends State<MainShellPage> {
     });
   }
 
-  void _openSosPage() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => const SosPage(),
+  void _showSosDialog() {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(
+          Icons.sos_rounded,
+          size: 38,
+          color: Color(0xFFC62828),
+        ),
+        title: Text(
+          'Bantuan Darurat',
+          style: GoogleFonts.plusJakartaSans(
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        content: Text(
+          'Fitur kontak darurat lingkungan belum terhubung. '
+          'Jika terjadi keadaan darurat, segera hubungi layanan '
+          'darurat resmi yang sesuai dengan kondisi kamu.',
+          style: GoogleFonts.inter(
+            fontSize: 12,
+            height: 1.6,
+            color: _muted,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Tutup'),
+          ),
+        ],
       ),
     );
   }
@@ -140,18 +167,11 @@ class _MainShellPageState extends State<MainShellPage> {
         return HomePage(
           user: _user,
           onNavigate: _navigateTo,
-          onSos: _openSosPage,
+          onSos: _showSosDialog,
         );
 
       case 1:
-        return const _InformationPage(
-          icon: Icons.account_balance_wallet_outlined,
-          title: 'Keuangan Warga',
-          subtitle: 'Transparansi kas dan iuran lingkungan',
-          description: 'Informasi saldo kas, pemasukan, pengeluaran, '
-              'dan pembayaran iuran warga akan ditampilkan di sini.',
-          information: 'Data keuangan belum tersedia.',
-        );
+        return FinancePage(user: _user);
 
       case 2:
         return const InventoryCatalogPage();
@@ -166,7 +186,7 @@ class _MainShellPageState extends State<MainShellPage> {
         return HomePage(
           user: _user,
           onNavigate: _navigateTo,
-          onSos: _openSosPage,
+          onSos: _showSosDialog,
         );
     }
   }
@@ -433,7 +453,7 @@ class _MainShellPageState extends State<MainShellPage> {
               ),
               Expanded(
                 child: InkWell(
-                  onTap: _openSosPage,
+                  onTap: _showSosDialog,
                   child: SizedBox(
                     height: 67,
                     child: Column(
@@ -507,116 +527,6 @@ class _MainShellPageState extends State<MainShellPage> {
         ),
       ),
       bottomNavigationBar: _buildBottomNavigation(),
-    );
-  }
-}
-
-class _InformationPage extends StatelessWidget {
-  const _InformationPage({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.description,
-    required this.information,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final String description;
-  final String information;
-
-  static const Color _green = Color(0xFF107C41);
-  static const Color _text = Color(0xFF17251C);
-  static const Color _muted = Color(0xFF718078);
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: const Color(0xFFF4FBF6),
-      child: ListView(
-        padding: const EdgeInsets.all(17),
-        children: [
-          Text(
-            subtitle,
-            style: GoogleFonts.inter(
-              fontSize: 11,
-              color: _muted,
-            ),
-          ),
-          const SizedBox(height: 18),
-          Container(
-            padding: const EdgeInsets.all(22),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFFDFEEE4)),
-            ),
-            child: Column(
-              children: [
-                Container(
-                  width: 68,
-                  height: 68,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE8FFF0),
-                    borderRadius: BorderRadius.circular(21),
-                  ),
-                  child: Icon(icon, size: 32, color: _green),
-                ),
-                const SizedBox(height: 18),
-                Text(
-                  title,
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: _text,
-                  ),
-                ),
-                const SizedBox(height: 9),
-                Text(
-                  description,
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    height: 1.6,
-                    color: _muted,
-                  ),
-                ),
-                const SizedBox(height: 22),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF0FAF3),
-                    borderRadius: BorderRadius.circular(13),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.info_outline_rounded,
-                        size: 19,
-                        color: _green,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          information,
-                          style: GoogleFonts.inter(
-                            fontSize: 11,
-                            color: _green,
-                            height: 1.4,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
