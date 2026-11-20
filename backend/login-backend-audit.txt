@@ -1,0 +1,964 @@
+
+
+========== src/services/auth.service.js ==========
+
+import { pool } from '../config/database.js';
+import { env } from '../config/env.config.js';
+import { OTP_PURPOSE, USER_STATUS } from '../config/constants.config.js';
+
+import {
+  createUser,
+  findUserById,
+  findUserByPhone,
+  updateUserPassword,
+} from '../repositories/user.repository.js';
+
+import {
+  consumeLoginChallenge,
+  consumeOtp,
+  consumePreviousOtps,
+  createLoginChallenge,
+  createOtp,
+  findLatestActiveOtp,
+  findLoginChallengeByIdForUpdate,
+  incrementOtpAttempts,
+} from '../repositories/otp.repository.js';
+
+import {
+  comparePassword,
+  hashPassword,
+  hashOtp,
+  safeCompareHash,
+  createPasswordFingerprint,
+} from '../utils/hash.js';
+
+import {
+  createAccessToken,
+  createResetToken,
+  verifyResetToken,
+} from '../utils/jwt.js';
+
+import { AppError } from '../utils/app_error.js';
+
+import {
+  createOtpForPhone,
+  isOtpExpired,
+  hasOtpExceededAttempts,
+} from './otp.service.js';
+
+import { sendWhatsAppOtp } from './whatsapp.service.js';
+
+function isActiveUser(user) {
+  return Boolean(
+    user
+    && !user.deletedAt
+    && user.status === USER_STATUS.AKTIF,
+  );
+}
+
+function publicUser(user) {
+  return {
+    id: user.id,
+    nama: user.nama,
+    noHp: user.noHp,
+    role: user.role,
+    status: user.status,
+    blokRumah: user.blokRumah,
+    noRumah: user.noRumah,
+    fotoProfil: user.fotoProfil,
+    rt: user.rt,
+    rw: user.rw,
+  };
+}
+
+function createAuthResult(user) {
+  return {
+    user: publicUser(user),
+    accessToken: createAccessToken(user),
+    tokenType: 'Bearer',
+    expiresIn: env.jwt.expiresIn,
+  };
+}
+
+function maskPhone(phone) {
+  const digits = String(phone).replace(/\D/g, '');
+
+  if (digits.length <= 5) {
+    return digits;
+  }
+
+  return `${digits.slice(0, 4)}${'*'.repeat(
+    Math.max(3, digits.length - 7),
+  )}${digits.slice(-3)}`;
+}
+
+function challengeIsExpired(challenge) {
+  return new Date(challenge.expiresAt).getTime() <= Date.now();
+}
+
+async function sendOtpOrConsume({
+  phone,
+  purpose,
+  challengeId = null,
+  otpData,
+}) {
+  try {
+    await sendWhatsAppOtp(phone, otpData.otp);
+  } catch (error) {
+    if (challengeId) {
+      await pool.query(
+        `UPDATE public."AuthOtp"
+         SET "consumedAt" = CURRENT_TIMESTAMP
+         WHERE "challengeId" = $1
+           AND "consumedAt" IS NULL`,
+        [challengeId],
+      );
+    } else {
+      await pool.query(
+        `UPDATE public."AuthOtp"
+         SET "consumedAt" = CURRENT_TIMESTAMP
+         WHERE "noHp" = $1
+           AND purpose = $2
+           AND "consumedAt" IS NULL`,
+        [phone, purpose],
+      );
+    }
+
+    throw new AppError(
+      'OTP gagal dikirim. Silakan coba kembali beberapa saat lagi.',
+      502,
+    );
+  }
+}
+
+export async function registerUser(data) {
+  const existingUser = await findUserByPhone(data.noHp);
+
+  if (existingUser && !existingUser.deletedAt) {
+    throw new AppError('Nomor WhatsApp sudah terdaftar.', 409);
+  }
+
+  if (existingUser?.deletedAt) {
+    throw new AppError(
+      'Nomor WhatsApp pernah digunakan pada akun yang dihapus. Hubungi administrator.',
+      409,
+    );
+  }
+
+  const password = await hashPassword(data.password);
+
+  try {
+    const user = await createUser({
+      ...data,
+      password,
+    });
+
+    // Registrasi warga tetap langsung aktif.
+    return createAuthResult(user);
+  } catch (error) {
+    if (error.code === '23505') {
+      throw new AppError('Nomor WhatsApp sudah terdaftar.', 409);
+    }
+
+    throw error;
+  }
+}
+
+/*
+ * Login tahap pertama:
+ * - Validasi nomor dan password.
+ * - Pastikan akun AKTIF.
+ * - Buat challenge.
+ * - Belum menerbitkan access token.
+ */
+export async function loginUser(data) {
+  const user = await findUserByPhone(data.noHp);
+
+  if (!user || user.deletedAt) {
+    throw new AppError('Nomor WhatsApp atau password salah.', 401);
+  }
+
+  const passwordMatches = await comparePassword(
+    data.password,
+    user.password,
+  );
+
+  if (!passwordMatches) {
+    throw new AppError('Nomor WhatsApp atau password salah.', 401);
+  }
+
+  if (!isActiveUser(user)) {
+    throw new AppError(
+      'Akun belum aktif atau tidak dapat digunakan.',
+      403,
+    );
+  }
+
+  const expiresAt = new Date(
+    Date.now() + env.otp.expiresMinutes * 60 * 1000,
+  );
+
+  const challenge = await createLoginChallenge({
+    userId: user.id,
+    phone: user.noHp,
+    expiresAt,
+  });
+
+  return {
+    challengeId: challenge.id,
+    phoneMasked: maskPhone(user.noHp),
+    expiresIn: env.otp.expiresMinutes * 60,
+  };
+}
+
+/*
+ * Meminta OTP:
+ * - LOGIN menggunakan challengeId.
+ * - RESET_PASSWORD tetap menggunakan noHp.
+ */
+export async function requestOtp(data) {
+  const isLogin = Boolean(data.challengeId);
+  const purpose = isLogin
+    ? OTP_PURPOSE.LOGIN
+    : OTP_PURPOSE.RESET_PASSWORD;
+
+  const client = await pool.connect();
+
+  let phone;
+  let challengeId = null;
+  let otpData;
+
+  try {
+    await client.query('BEGIN');
+
+    if (isLogin) {
+      challengeId = data.challengeId;
+
+      const challenge = await findLoginChallengeByIdForUpdate(
+        challengeId,
+        client,
+      );
+
+      if (
+        !challenge
+        || challenge.consumedAt
+        || challengeIsExpired(challenge)
+      ) {
+        throw new AppError(
+          'Sesi login sudah kedaluwarsa. Silakan login kembali.',
+          401,
+        );
+      }
+
+      phone = challenge.noHp;
+
+      const user = await findUserByPhone(phone, client);
+
+      if (
+        !isActiveUser(user)
+        || user.id !== challenge.userId
+      ) {
+        throw new AppError(
+          'Akun tidak ditemukan atau tidak aktif.',
+          403,
+        );
+      }
+    } else {
+      phone = data.noHp;
+
+      const user = await findUserByPhone(phone, client);
+
+      if (!isActiveUser(user)) {
+        throw new AppError(
+          'Akun tidak ditemukan atau belum aktif.',
+          404,
+        );
+      }
+    }
+
+    const latestOtp = await findLatestActiveOtp(
+      phone,
+      purpose,
+      client,
+      challengeId,
+    );
+
+    if (latestOtp) {
+      const elapsedSeconds =
+        (Date.now() - new Date(latestOtp.createdAt).getTime()) / 1000;
+
+      if (elapsedSeconds < 60) {
+        throw new AppError(
+          'Mohon tunggu 60 detik sebelum meminta OTP kembali.',
+          429,
+        );
+      }
+    }
+
+    await consumePreviousOtps(
+      phone,
+      purpose,
+      client,
+      challengeId,
+    );
+
+    otpData = createOtpForPhone(phone, purpose);
+
+    await createOtp({
+      phone,
+      purpose,
+      otpHash: otpData.otpHash,
+      expiresAt: otpData.expiresAt,
+      challengeId,
+    }, client);
+
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  await sendOtpOrConsume({
+    phone,
+    purpose,
+    challengeId,
+    otpData,
+  });
+
+  return {
+    message: 'OTP berhasil dikirim.',
+    expiresIn: env.otp.expiresMinutes * 60,
+  };
+}
+
+/*
+ * Verifikasi:
+ * - LOGIN harus menyertakan challengeId.
+ * - OTP harus berasal dari challenge yang sama.
+ * - Challenge hanya dapat diselesaikan satu kali.
+ * - Access token baru dibuat setelah OTP valid.
+ * - RESET_PASSWORD tetap memakai mekanisme lama.
+ */
+export async function verifyOtp(data) {
+  const isLogin = Boolean(data.challengeId);
+  const purpose = isLogin
+    ? OTP_PURPOSE.LOGIN
+    : OTP_PURPOSE.RESET_PASSWORD;
+
+  const client = await pool.connect();
+
+  let outcome;
+
+  try {
+    await client.query('BEGIN');
+
+    let phone = data.noHp;
+    let challenge = null;
+
+    if (isLogin) {
+      challenge = await findLoginChallengeByIdForUpdate(
+        data.challengeId,
+        client,
+      );
+
+      if (
+        !challenge
+        || challenge.consumedAt
+        || challengeIsExpired(challenge)
+      ) {
+        throw new AppError(
+          'Sesi login sudah kedaluwarsa. Silakan login kembali.',
+          401,
+        );
+      }
+
+      phone = challenge.noHp;
+    }
+
+    const otpResult = isLogin
+      ? await client.query(
+        `SELECT *
+         FROM public."AuthOtp"
+         WHERE "challengeId" = $1
+           AND purpose = $2
+           AND "consumedAt" IS NULL
+         ORDER BY "createdAt" DESC
+         LIMIT 1
+         FOR UPDATE`,
+        [data.challengeId, purpose],
+      )
+      : await client.query(
+        `SELECT *
+         FROM public."AuthOtp"
+         WHERE "noHp" = $1
+           AND purpose = $2
+           AND "challengeId" IS NULL
+           AND "consumedAt" IS NULL
+         ORDER BY "createdAt" DESC
+         LIMIT 1
+         FOR UPDATE`,
+        [phone, purpose],
+      );
+
+    const otpRecord = otpResult.rows[0];
+
+    if (!otpRecord) {
+      throw new AppError(
+        'OTP tidak ditemukan atau sudah digunakan. Silakan minta OTP baru.',
+        400,
+      );
+    }
+
+    if (isOtpExpired(otpRecord)) {
+      await consumeOtp(otpRecord.id, client);
+
+      outcome = {
+        error: new AppError('OTP sudah kedaluwarsa.', 400),
+      };
+    } else if (hasOtpExceededAttempts(otpRecord)) {
+      await consumeOtp(otpRecord.id, client);
+
+      outcome = {
+        error: new AppError(
+          'Batas percobaan OTP telah tercapai. Minta OTP baru.',
+          429,
+        ),
+      };
+    } else {
+      const submittedHash = hashOtp(
+        phone,
+        purpose,
+        data.otp,
+      );
+
+      if (!safeCompareHash(otpRecord.otpHash, submittedHash)) {
+        await incrementOtpAttempts(otpRecord.id, client);
+
+        outcome = {
+          error: new AppError('Kode OTP salah.', 400),
+        };
+      } else {
+        await consumeOtp(otpRecord.id, client);
+
+        const user = await findUserByPhone(phone, client);
+
+        if (
+          !isActiveUser(user)
+          || (isLogin && user.id !== challenge.userId)
+        ) {
+          outcome = {
+            error: new AppError(
+              'Akun tidak ditemukan atau belum aktif.',
+              403,
+            ),
+          };
+        } else {
+          if (isLogin) {
+            await consumeLoginChallenge(
+              data.challengeId,
+              client,
+            );
+          }
+
+          outcome = { user };
+        }
+      }
+    }
+
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  if (outcome?.error) {
+    throw outcome.error;
+  }
+
+  if (isLogin) {
+    return createAuthResult(outcome.user);
+  }
+
+  return {
+    resetToken: createResetToken(outcome.user),
+    tokenType: 'Bearer',
+    expiresIn: '10m',
+  };
+}
+
+export async function resetPassword(data) {
+  let payload;
+
+  try {
+    payload = verifyResetToken(data.resetToken);
+  } catch {
+    throw new AppError(
+      'Reset token tidak valid atau sudah kedaluwarsa.',
+      401,
+    );
+  }
+
+  if (
+    payload.type !== 'password_reset'
+    || !payload.sub
+    || !payload.passwordFingerprint
+  ) {
+    throw new AppError('Reset token tidak valid.', 401);
+  }
+
+  const user = await findUserById(payload.sub);
+
+  if (!isActiveUser(user)) {
+    throw new AppError('Akun tidak ditemukan atau tidak aktif.', 404);
+  }
+
+  const currentFingerprint = createPasswordFingerprint(user.password);
+
+  if (currentFingerprint !== payload.passwordFingerprint) {
+    throw new AppError(
+      'Reset token sudah digunakan atau tidak berlaku.',
+      401,
+    );
+  }
+
+  const newHashedPassword = await hashPassword(data.newPassword);
+
+  const updated = await updateUserPassword(
+    user.id,
+    newHashedPassword,
+  );
+
+  if (!updated) {
+    throw new AppError('Gagal memperbarui password.', 500);
+  }
+
+  return {
+    message: 'Password berhasil diperbarui.',
+  };
+}
+
+export async function getCurrentUser(userId) {
+  const user = await findUserById(userId);
+
+  if (!isActiveUser(user)) {
+    throw new AppError(
+      'Pengguna tidak ditemukan atau akun tidak aktif.',
+      404,
+    );
+  }
+
+  return publicUser(user);
+}
+
+
+========== src/repositories/otp.repository.js ==========
+
+import { pool } from '../config/database.js';
+
+export async function createLoginChallenge({
+  userId,
+  phone,
+  expiresAt,
+}, client = pool) {
+  const result = await client.query(
+    `INSERT INTO public."AuthLoginChallenge" (
+      id,
+      "userId",
+      "noHp",
+      "expiresAt",
+      "createdAt"
+    )
+    VALUES (
+      gen_random_uuid(),
+      $1,
+      $2,
+      $3,
+      CURRENT_TIMESTAMP
+    )
+    RETURNING id, "userId", "noHp", "expiresAt", "consumedAt"`,
+    [userId, phone, expiresAt],
+  );
+
+  return result.rows[0];
+}
+
+export async function findLoginChallengeById(
+  challengeId,
+  client = pool,
+) {
+  const result = await client.query(
+    `SELECT *
+     FROM public."AuthLoginChallenge"
+     WHERE id = $1
+     LIMIT 1`,
+    [challengeId],
+  );
+
+  return result.rows[0] || null;
+}
+
+export async function findLoginChallengeByIdForUpdate(
+  challengeId,
+  client,
+) {
+  const result = await client.query(
+    `SELECT *
+     FROM public."AuthLoginChallenge"
+     WHERE id = $1
+     LIMIT 1
+     FOR UPDATE`,
+    [challengeId],
+  );
+
+  return result.rows[0] || null;
+}
+
+export async function consumeLoginChallenge(
+  challengeId,
+  client = pool,
+) {
+  await client.query(
+    `UPDATE public."AuthLoginChallenge"
+     SET "consumedAt" = CURRENT_TIMESTAMP
+     WHERE id = $1
+       AND "consumedAt" IS NULL`,
+    [challengeId],
+  );
+}
+
+export async function findLatestActiveOtp(
+  phone,
+  purpose,
+  client = pool,
+  challengeId = null,
+) {
+  const result = await client.query(
+    `SELECT *
+     FROM public."AuthOtp"
+     WHERE "noHp" = $1
+       AND purpose = $2
+       AND "consumedAt" IS NULL
+       AND "challengeId" IS NOT DISTINCT FROM $3::uuid
+     ORDER BY "createdAt" DESC
+     LIMIT 1`,
+    [phone, purpose, challengeId],
+  );
+
+  return result.rows[0] || null;
+}
+
+export async function createOtp({
+  phone,
+  purpose,
+  otpHash,
+  expiresAt,
+  challengeId = null,
+}, client = pool) {
+  const result = await client.query(
+    `INSERT INTO public."AuthOtp" (
+      id,
+      "noHp",
+      purpose,
+      "otpHash",
+      "expiresAt",
+      attempts,
+      "createdAt",
+      "challengeId"
+    )
+    VALUES (
+      gen_random_uuid(),
+      $1,
+      $2,
+      $3,
+      $4,
+      0,
+      CURRENT_TIMESTAMP,
+      $5
+    )
+    RETURNING
+      id,
+      "noHp",
+      purpose,
+      "expiresAt",
+      "createdAt",
+      "challengeId"`,
+    [phone, purpose, otpHash, expiresAt, challengeId],
+  );
+
+  return result.rows[0];
+}
+
+export async function consumeOtp(id, client = pool) {
+  await client.query(
+    `UPDATE public."AuthOtp"
+     SET "consumedAt" = CURRENT_TIMESTAMP
+     WHERE id = $1
+       AND "consumedAt" IS NULL`,
+    [id],
+  );
+}
+
+export async function incrementOtpAttempts(id, client = pool) {
+  await client.query(
+    `UPDATE public."AuthOtp"
+     SET attempts = attempts + 1
+     WHERE id = $1`,
+    [id],
+  );
+}
+
+export async function consumePreviousOtps(
+  phone,
+  purpose,
+  client = pool,
+  challengeId = null,
+) {
+  await client.query(
+    `UPDATE public."AuthOtp"
+     SET "consumedAt" = CURRENT_TIMESTAMP
+     WHERE "noHp" = $1
+       AND purpose = $2
+       AND "consumedAt" IS NULL
+       AND "challengeId" IS NOT DISTINCT FROM $3::uuid`,
+    [phone, purpose, challengeId],
+  );
+}
+
+
+========== src/validators/auth.validator.js ==========
+
+import { z } from 'zod';
+
+import {
+  isValidPhoneNumber,
+  normalizePhoneNumber,
+} from '../utils/phone.js';
+
+const phoneSchema = z.string()
+  .trim()
+  .min(1, 'Nomor HP wajib diisi.')
+  .max(30, 'Nomor HP terlalu panjang.')
+  .transform(normalizePhoneNumber)
+  .refine(
+    isValidPhoneNumber,
+    'Nomor WhatsApp Indonesia tidak valid.',
+  );
+
+export const registerSchema = z.object({
+  nama: z.string()
+    .trim()
+    .min(3, 'Nama minimal 3 karakter.')
+    .max(100, 'Nama maksimal 100 karakter.'),
+
+  noHp: phoneSchema,
+
+  blokRumah: z.string()
+    .trim()
+    .min(1, 'Blok rumah wajib diisi.')
+    .max(30),
+
+  noRumah: z.string()
+    .trim()
+    .min(1, 'Nomor rumah wajib diisi.')
+    .max(30),
+
+  password: z.string()
+    .min(8, 'Password minimal 8 karakter.')
+    .max(72, 'Password maksimal 72 karakter.'),
+});
+
+export const loginSchema = z.object({
+  noHp: phoneSchema,
+  password: z.string().min(1, 'Password wajib diisi.'),
+});
+
+/*
+ * LOGIN:
+ * { challengeId }
+ *
+ * RESET_PASSWORD:
+ * { noHp, purpose }
+ */
+export const otpRequestSchema = z.union([
+  z.object({
+    challengeId: z.string().uuid('Challenge login tidak valid.'),
+  }),
+
+  z.object({
+    noHp: phoneSchema,
+    purpose: z.literal('RESET_PASSWORD'),
+  }),
+]);
+
+/*
+ * LOGIN:
+ * { challengeId, otp }
+ *
+ * RESET_PASSWORD:
+ * { noHp, purpose, otp }
+ */
+export const otpVerifySchema = z.union([
+  z.object({
+    challengeId: z.string().uuid('Challenge login tidak valid.'),
+    otp: z.string()
+      .regex(/^[0-9]{6}$/, 'OTP harus terdiri dari 6 digit.'),
+  }),
+
+  z.object({
+    noHp: phoneSchema,
+    purpose: z.literal('RESET_PASSWORD'),
+    otp: z.string()
+      .regex(/^[0-9]{6}$/, 'OTP harus terdiri dari 6 digit.'),
+  }),
+]);
+
+export const resetPasswordSchema = z.object({
+  resetToken: z.string().min(1, 'Reset token wajib diisi.'),
+
+  newPassword: z.string()
+    .min(8, 'Password minimal 8 karakter.')
+    .max(72, 'Password maksimal 72 karakter.'),
+});
+
+
+========== src/controllers/auth.controller.js ==========
+
+
+import {
+  registerSchema,
+  loginSchema,
+  otpRequestSchema,
+  otpVerifySchema,
+  resetPasswordSchema,
+} from '../validators/auth.validator.js';
+
+import {
+  registerUser,
+  loginUser,
+  requestOtp,
+  verifyOtp,
+  resetPassword,
+  getCurrentUser,
+} from '../services/auth.service.js';
+
+function validate(schema, data) {
+  const result = schema.safeParse(data);
+
+  if (!result.success) {
+    const error = new Error(
+      result.error.issues.map((item) => item.message).join(', '),
+    );
+
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return result.data;
+}
+
+function sendError(res, error) {
+  const statusCode = Number.isInteger(error.statusCode)
+    ? error.statusCode
+    : 500;
+
+  if (statusCode >= 500) {
+    console.error(error);
+  }
+
+  return res.status(statusCode).json({
+    success: false,
+    message: statusCode >= 500
+      ? 'Terjadi kesalahan pada server.'
+      : error.message,
+  });
+}
+
+export async function register(req, res) {
+  try {
+    const data = validate(registerSchema, req.body);
+    const result = await registerUser(data);
+
+    return res.status(201).json({
+      success: true,
+      message: 'Registrasi berhasil.',
+      data: result,
+    });
+  } catch (error) {
+    return sendError(res, error);
+  }
+}
+
+export async function login(req, res) {
+  try {
+    const data = validate(loginSchema, req.body);
+    const result = await loginUser(data);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Login berhasil.',
+      data: result,
+    });
+  } catch (error) {
+    return sendError(res, error);
+  }
+}
+
+export async function requestOtpController(req, res) {
+  try {
+    const data = validate(otpRequestSchema, req.body);
+    const result = await requestOtp(data);
+
+    return res.status(200).json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    return sendError(res, error);
+  }
+}
+
+export async function verifyOtpController(req, res) {
+  try {
+    const data = validate(otpVerifySchema, req.body);
+    const result = await verifyOtp(data);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Verifikasi OTP berhasil.',
+      data: result,
+    });
+  } catch (error) {
+    return sendError(res, error);
+  }
+}
+
+export async function resetPasswordController(req, res) {
+  try {
+    const data = validate(resetPasswordSchema, req.body);
+    const result = await resetPassword(data);
+
+    return res.status(200).json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    return sendError(res, error);
+  }
+}
+
+export async function me(req, res) {
+  try {
+    const user = await getCurrentUser(req.user.id);
+
+    return res.status(200).json({
+      success: true,
+      data: user,
+    });
+  } catch (error) {
+    return sendError(res, error);
+  }
+}

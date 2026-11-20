@@ -3,6 +3,8 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../core/storage/secure_storage.dart';
 import '../../../onboarding/presentation/pages/onboarding_page.dart';
+import '../../../inventory/presentation/pages/inventory_catalog_page.dart';
+import '../../../emergency/presentation/pages/sos_page.dart';
 import 'home_page.dart';
 
 class MainShellPage extends StatefulWidget {
@@ -107,37 +109,10 @@ class _MainShellPageState extends State<MainShellPage> {
     });
   }
 
-  void _showSosDialog() {
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        icon: const Icon(
-          Icons.sos_rounded,
-          size: 38,
-          color: Color(0xFFC62828),
-        ),
-        title: Text(
-          'Bantuan Darurat',
-          style: GoogleFonts.plusJakartaSans(
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        content: Text(
-          'Fitur kontak darurat lingkungan belum terhubung. '
-          'Jika terjadi keadaan darurat, segera hubungi layanan '
-          'darurat resmi yang sesuai dengan kondisi kamu.',
-          style: GoogleFonts.inter(
-            fontSize: 12,
-            height: 1.6,
-            color: _muted,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Tutup'),
-          ),
-        ],
+  void _openSosPage() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const SosPage(),
       ),
     );
   }
@@ -165,7 +140,7 @@ class _MainShellPageState extends State<MainShellPage> {
         return HomePage(
           user: _user,
           onNavigate: _navigateTo,
-          onSos: _showSosDialog,
+          onSos: _openSosPage,
         );
 
       case 1:
@@ -179,14 +154,7 @@ class _MainShellPageState extends State<MainShellPage> {
         );
 
       case 2:
-        return const _InformationPage(
-          icon: Icons.inventory_2_outlined,
-          title: 'Inventaris Warga',
-          subtitle: 'Kelola barang milik bersama',
-          description: 'Daftar inventaris, ketersediaan barang, '
-              'dan informasi peminjaman akan ditampilkan di sini.',
-          information: 'Data inventaris belum tersedia.',
-        );
+        return const InventoryCatalogPage();
 
       case 3:
         return const _ServicesPage();
@@ -198,7 +166,7 @@ class _MainShellPageState extends State<MainShellPage> {
         return HomePage(
           user: _user,
           onNavigate: _navigateTo,
-          onSos: _showSosDialog,
+          onSos: _openSosPage,
         );
     }
   }
@@ -465,7 +433,7 @@ class _MainShellPageState extends State<MainShellPage> {
               ),
               Expanded(
                 child: InkWell(
-                  onTap: _showSosDialog,
+                  onTap: _openSosPage,
                   child: SizedBox(
                     height: 67,
                     child: Column(

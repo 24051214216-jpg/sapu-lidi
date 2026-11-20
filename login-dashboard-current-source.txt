@@ -1,0 +1,2213 @@
+
+========== backend\src\services\auth.service.js ==========
+
+import { pool } from '../config/database.js';
+import { env } from '../config/env.config.js';
+import { OTP_PURPOSE, USER_STATUS } from '../config/constants.config.js';
+
+import {
+  createUser,
+  findUserById,
+  findUserByPhone,
+  updateUserPassword,
+} from '../repositories/user.repository.js';
+
+import {
+  consumeOtp,
+  consumePreviousOtps,
+  createOtp,
+  findLatestActiveOtp,
+  incrementOtpAttempts,
+} from '../repositories/otp.repository.js';
+
+import {
+  comparePassword,
+  hashPassword,
+  hashOtp,
+  safeCompareHash,
+  createPasswordFingerprint,
+} from '../utils/hash.js';
+
+import {
+  createAccessToken,
+  createResetToken,
+  verifyResetToken,
+} from '../utils/jwt.js';
+
+import { AppError } from '../utils/app_error.js';
+import { createOtpForPhone, isOtpExpired, hasOtpExceededAttempts } from './otp.service.js';
+import { sendWhatsAppOtp } from './whatsapp.service.js';
+
+function isActiveUser(user) {
+  return Boolean(
+    user
+    && !user.deletedAt
+    && user.status === USER_STATUS.AKTIF,
+  );
+}
+
+function publicUser(user) {
+  return {
+    id: user.id,
+    nama: user.nama,
+    noHp: user.noHp,
+    role: user.role,
+    status: user.status,
+    blokRumah: user.blokRumah,
+    noRumah: user.noRumah,
+    fotoProfil: user.fotoProfil,
+    rt: user.rt,
+    rw: user.rw,
+  };
+}
+
+function createAuthResult(user) {
+  return {
+    user: publicUser(user),
+    accessToken: createAccessToken(user),
+    tokenType: 'Bearer',
+    expiresIn: env.jwt.expiresIn,
+  };
+}
+
+export async function registerUser(data) {
+  const existingUser = await findUserByPhone(data.noHp);
+
+  if (existingUser && !existingUser.deletedAt) {
+    throw new AppError('Nomor WhatsApp sudah terdaftar.', 409);
+  }
+
+  if (existingUser?.deletedAt) {
+    throw new AppError(
+      'Nomor WhatsApp pernah digunakan pada akun yang dihapus. Hubungi administrator.',
+      409,
+    );
+  }
+
+  const password = await hashPassword(data.password);
+
+  try {
+    const user = await createUser({
+      ...data,
+      password,
+    });
+
+    return createAuthResult(user);
+  } catch (error) {
+    if (error.code === '23505') {
+      throw new AppError('Nomor WhatsApp sudah terdaftar.', 409);
+    }
+
+    throw error;
+  }
+}
+
+export async function loginUser(data) {
+  const user = await findUserByPhone(data.noHp);
+
+  if (!user || user.deletedAt) {
+    throw new AppError('Nomor WhatsApp atau password salah.', 401);
+  }
+
+  const passwordMatches = await comparePassword(
+    data.password,
+    user.password,
+  );
+
+  if (!passwordMatches) {
+    throw new AppError('Nomor WhatsApp atau password salah.', 401);
+  }
+
+  if (!isActiveUser(user)) {
+    throw new AppError('Akun belum aktif atau tidak dapat digunakan.', 403);
+  }
+
+  return createAuthResult(user);
+}
+
+export async function requestOtp(data) {
+  const user = await findUserByPhone(data.noHp);
+
+  if (!isActiveUser(user)) {
+    throw new AppError(
+      'Akun tidak ditemukan atau belum aktif.',
+      404,
+    );
+  }
+
+  if (!Object.values(OTP_PURPOSE).includes(data.purpose)) {
+    throw new AppError('Tujuan OTP tidak valid.', 400);
+  }
+
+  const client = await pool.connect();
+  let otpData;
+
+  try {
+    await client.query('BEGIN');
+
+    const latestOtp = await findLatestActiveOtp(
+      data.noHp,
+      data.purpose,
+      client,
+    );
+
+    if (latestOtp) {
+      const elapsedSeconds =
+        (Date.now() - new Date(latestOtp.createdAt).getTime()) / 1000;
+
+      if (elapsedSeconds < 60) {
+        throw new AppError(
+          'Mohon tunggu 60 detik sebelum meminta OTP kembali.',
+          429,
+        );
+      }
+    }
+
+    await consumePreviousOtps(
+      data.noHp,
+      data.purpose,
+      client,
+    );
+
+    otpData = createOtpForPhone(data.noHp, data.purpose);
+
+    await createOtp({
+      phone: data.noHp,
+      purpose: data.purpose,
+      otpHash: otpData.otpHash,
+      expiresAt: otpData.expiresAt,
+    }, client);
+
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  try {
+    await sendWhatsAppOtp(data.noHp, otpData.otp);
+  } catch (error) {
+    await pool.query(
+      `UPDATE public."AuthOtp"
+       SET "consumedAt" = CURRENT_TIMESTAMP
+       WHERE "noHp" = $1
+         AND purpose = $2
+         AND "consumedAt" IS NULL`,
+      [data.noHp, data.purpose],
+    );
+
+    throw new AppError(
+      'OTP gagal dikirim. Silakan coba kembali beberapa saat lagi.',
+      502,
+    );
+  }
+
+  return {
+    message: 'OTP berhasil dikirim.',
+    expiresIn: env.otp.expiresMinutes * 60,
+  };
+}
+
+export async function verifyOtp(data) {
+  const client = await pool.connect();
+  let outcome;
+
+  try {
+    await client.query('BEGIN');
+
+    const otpResult = await client.query(
+      `SELECT *
+       FROM public."AuthOtp"
+       WHERE "noHp" = $1
+         AND purpose = $2
+         AND "consumedAt" IS NULL
+       ORDER BY "createdAt" DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [data.noHp, data.purpose],
+    );
+
+    const otpRecord = otpResult.rows[0];
+
+    if (!otpRecord) {
+      throw new AppError(
+        'OTP tidak ditemukan atau sudah digunakan.',
+        400,
+      );
+    }
+
+    if (isOtpExpired(otpRecord)) {
+      await consumeOtp(otpRecord.id, client);
+      outcome = {
+        error: new AppError('OTP sudah kedaluwarsa.', 400),
+      };
+    } else if (hasOtpExceededAttempts(otpRecord)) {
+      await consumeOtp(otpRecord.id, client);
+      outcome = {
+        error: new AppError(
+          'Batas percobaan OTP telah tercapai. Minta OTP baru.',
+          429,
+        ),
+      };
+    } else {
+      const submittedHash = hashOtp(
+        data.noHp,
+        data.purpose,
+        data.otp,
+      );
+
+      if (!safeCompareHash(otpRecord.otpHash, submittedHash)) {
+        await incrementOtpAttempts(otpRecord.id, client);
+
+        outcome = {
+          error: new AppError('Kode OTP salah.', 400),
+        };
+      } else {
+        await consumeOtp(otpRecord.id, client);
+
+        const user = await findUserByPhone(data.noHp, client);
+
+        if (!isActiveUser(user)) {
+          outcome = {
+            error: new AppError(
+              'Akun tidak ditemukan atau belum aktif.',
+              403,
+            ),
+          };
+        } else {
+          outcome = { user };
+        }
+      }
+    }
+
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  if (outcome.error) {
+    throw outcome.error;
+  }
+
+  if (data.purpose === OTP_PURPOSE.LOGIN) {
+    return createAuthResult(outcome.user);
+  }
+
+  return {
+    resetToken: createResetToken(outcome.user),
+    tokenType: 'Bearer',
+    expiresIn: '10m',
+  };
+}
+
+export async function resetPassword(data) {
+  let payload;
+
+  try {
+    payload = verifyResetToken(data.resetToken);
+  } catch {
+    throw new AppError(
+      'Reset token tidak valid atau sudah kedaluwarsa.',
+      401,
+    );
+  }
+
+  if (
+    payload.type !== 'password_reset'
+    || !payload.sub
+    || !payload.passwordFingerprint
+  ) {
+    throw new AppError('Reset token tidak valid.', 401);
+  }
+
+  const user = await findUserById(payload.sub);
+
+  if (!isActiveUser(user)) {
+    throw new AppError('Akun tidak ditemukan atau tidak aktif.', 404);
+  }
+
+  const currentFingerprint = createPasswordFingerprint(user.password);
+
+  if (currentFingerprint !== payload.passwordFingerprint) {
+    throw new AppError(
+      'Reset token sudah digunakan atau tidak berlaku.',
+      401,
+    );
+  }
+
+  const newHashedPassword = await hashPassword(data.newPassword);
+
+  const updated = await updateUserPassword(
+    user.id,
+    newHashedPassword,
+  );
+
+  if (!updated) {
+    throw new AppError('Gagal memperbarui password.', 500);
+  }
+
+  return {
+    message: 'Password berhasil diperbarui.',
+  };
+}
+
+export async function getCurrentUser(userId) {
+  const user = await findUserById(userId);
+
+  if (!isActiveUser(user)) {
+    throw new AppError(
+      'Pengguna tidak ditemukan atau akun tidak aktif.',
+      404,
+    );
+  }
+
+  return publicUser(user);
+}
+
+========== backend\src\repositories\otp.repository.js ==========
+
+import { pool } from '../config/database.js';
+
+export async function findLatestActiveOtp(phone, purpose, client = pool) {
+  const result = await client.query(
+    `SELECT *
+     FROM public."AuthOtp"
+     WHERE "noHp" = $1
+       AND purpose = $2
+       AND "consumedAt" IS NULL
+     ORDER BY "createdAt" DESC
+     LIMIT 1`,
+    [phone, purpose],
+  );
+
+  return result.rows[0] || null;
+}
+
+export async function createOtp({
+  phone,
+  purpose,
+  otpHash,
+  expiresAt,
+}, client = pool) {
+  const result = await client.query(
+    `INSERT INTO public."AuthOtp" (
+      id,
+      "noHp",
+      purpose,
+      "otpHash",
+      "expiresAt",
+      attempts,
+      "createdAt"
+    )
+    VALUES (
+      gen_random_uuid(),
+      $1,
+      $2,
+      $3,
+      $4,
+      0,
+      CURRENT_TIMESTAMP
+    )
+    RETURNING id, "noHp", purpose, "expiresAt", "createdAt"`,
+    [phone, purpose, otpHash, expiresAt],
+  );
+
+  return result.rows[0];
+}
+
+export async function consumeOtp(id, client = pool) {
+  await client.query(
+    `UPDATE public."AuthOtp"
+     SET "consumedAt" = CURRENT_TIMESTAMP
+     WHERE id = $1
+       AND "consumedAt" IS NULL`,
+    [id],
+  );
+}
+
+export async function incrementOtpAttempts(id, client = pool) {
+  await client.query(
+    `UPDATE public."AuthOtp"
+     SET attempts = attempts + 1
+     WHERE id = $1`,
+    [id],
+  );
+}
+
+export async function consumePreviousOtps(phone, purpose, client = pool) {
+  await client.query(
+    `UPDATE public."AuthOtp"
+     SET "consumedAt" = CURRENT_TIMESTAMP
+     WHERE "noHp" = $1
+       AND purpose = $2
+       AND "consumedAt" IS NULL`,
+    [phone, purpose],
+  );
+}
+
+========== backend\src\controllers\auth.controller.js ==========
+
+
+import {
+  registerSchema,
+  loginSchema,
+  otpRequestSchema,
+  otpVerifySchema,
+  resetPasswordSchema,
+} from '../validators/auth.validator.js';
+
+import {
+  registerUser,
+  loginUser,
+  requestOtp,
+  verifyOtp,
+  resetPassword,
+  getCurrentUser,
+} from '../services/auth.service.js';
+
+function validate(schema, data) {
+  const result = schema.safeParse(data);
+
+  if (!result.success) {
+    const error = new Error(
+      result.error.issues.map((item) => item.message).join(', '),
+    );
+
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return result.data;
+}
+
+function sendError(res, error) {
+  const statusCode = Number.isInteger(error.statusCode)
+    ? error.statusCode
+    : 500;
+
+  if (statusCode >= 500) {
+    console.error(error);
+  }
+
+  return res.status(statusCode).json({
+    success: false,
+    message: statusCode >= 500
+      ? 'Terjadi kesalahan pada server.'
+      : error.message,
+  });
+}
+
+export async function register(req, res) {
+  try {
+    const data = validate(registerSchema, req.body);
+    const result = await registerUser(data);
+
+    return res.status(201).json({
+      success: true,
+      message: 'Registrasi berhasil.',
+      data: result,
+    });
+  } catch (error) {
+    return sendError(res, error);
+  }
+}
+
+export async function login(req, res) {
+  try {
+    const data = validate(loginSchema, req.body);
+    const result = await loginUser(data);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Login berhasil.',
+      data: result,
+    });
+  } catch (error) {
+    return sendError(res, error);
+  }
+}
+
+export async function requestOtpController(req, res) {
+  try {
+    const data = validate(otpRequestSchema, req.body);
+    const result = await requestOtp(data);
+
+    return res.status(200).json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    return sendError(res, error);
+  }
+}
+
+export async function verifyOtpController(req, res) {
+  try {
+    const data = validate(otpVerifySchema, req.body);
+    const result = await verifyOtp(data);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Verifikasi OTP berhasil.',
+      data: result,
+    });
+  } catch (error) {
+    return sendError(res, error);
+  }
+}
+
+export async function resetPasswordController(req, res) {
+  try {
+    const data = validate(resetPasswordSchema, req.body);
+    const result = await resetPassword(data);
+
+    return res.status(200).json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    return sendError(res, error);
+  }
+}
+
+export async function me(req, res) {
+  try {
+    const user = await getCurrentUser(req.user.id);
+
+    return res.status(200).json({
+      success: true,
+      data: user,
+    });
+  } catch (error) {
+    return sendError(res, error);
+  }
+}
+
+
+========== backend\src\validators\auth.validator.js ==========
+
+
+import { z } from 'zod';
+import {
+  isValidPhoneNumber,
+  normalizePhoneNumber,
+} from '../utils/phone.js';
+
+const phoneSchema = z.string()
+  .trim()
+  .min(1, 'Nomor HP wajib diisi.')
+  .max(30, 'Nomor HP terlalu panjang.')
+  .transform(normalizePhoneNumber)
+  .refine(
+    isValidPhoneNumber,
+    'Nomor WhatsApp Indonesia tidak valid.',
+  );
+
+export const registerSchema = z.object({
+  nama: z.string()
+    .trim()
+    .min(3, 'Nama minimal 3 karakter.')
+    .max(100, 'Nama maksimal 100 karakter.'),
+
+  noHp: phoneSchema,
+
+  blokRumah: z.string()
+    .trim()
+    .min(1, 'Blok rumah wajib diisi.')
+    .max(30),
+
+  noRumah: z.string()
+    .trim()
+    .min(1, 'Nomor rumah wajib diisi.')
+    .max(30),
+
+  password: z.string()
+    .min(8, 'Password minimal 8 karakter.')
+    .max(72, 'Password maksimal 72 karakter.'),
+});
+
+export const loginSchema = z.object({
+  noHp: phoneSchema,
+  password: z.string().min(1, 'Password wajib diisi.'),
+});
+
+export const otpRequestSchema = z.object({
+  noHp: phoneSchema,
+  purpose: z.enum(['LOGIN', 'RESET_PASSWORD']),
+});
+
+export const otpVerifySchema = z.object({
+  noHp: phoneSchema,
+  purpose: z.enum(['LOGIN', 'RESET_PASSWORD']),
+  otp: z.string()
+    .regex(/^[0-9]{6}$/, 'OTP harus terdiri dari 6 digit.'),
+});
+
+export const resetPasswordSchema = z.object({
+  resetToken: z.string().min(1, 'Reset token wajib diisi.'),
+  newPassword: z.string()
+    .min(8, 'Password minimal 8 karakter.')
+    .max(72, 'Password maksimal 72 karakter.'),
+});
+
+
+========== backend\src\routes\v1\auth.routes.js ==========
+
+
+import { Router } from 'express';
+
+import {
+  register,
+  login,
+  requestOtpController,
+  verifyOtpController,
+  resetPasswordController,
+  me,
+} from '../../controllers/auth.controller.js';
+
+import {
+  authenticateToken,
+} from '../../middlewares/auth.middleware.js';
+
+import {
+  authLimiter,
+  otpRequestLimiter,
+  otpVerifyLimiter,
+  passwordResetLimiter,
+} from '../../middlewares/rate_limiter.middleware.js';
+
+const router = Router();
+
+// Registrasi warga
+router.post('/register', authLimiter, register);
+
+// Login menggunakan nomor HP dan password
+router.post('/login', authLimiter, login);
+
+// Meminta OTP
+router.post('/otp/request', otpRequestLimiter, requestOtpController);
+
+// Verifikasi OTP
+router.post('/otp/verify', otpVerifyLimiter, verifyOtpController);
+
+// Reset password
+router.post('/password/reset', passwordResetLimiter, resetPasswordController);
+
+// Mendapatkan profil pengguna yang sedang login
+router.get('/me', authenticateToken, me);
+
+export default router;
+
+
+========== backend\src\services\otp.service.js ==========
+
+import { env } from '../config/env.config.js';
+import {
+  generateOtp,
+  hashOtp,
+} from '../utils/hash.js';
+
+export function createOtpForPhone(phone, purpose) {
+  const otp = generateOtp();
+
+  const expiresAt = new Date(
+    Date.now() + env.otp.expiresMinutes * 60 * 1000,
+  );
+
+  return {
+    otp,
+    otpHash: hashOtp(phone, purpose, otp),
+    expiresAt,
+  };
+}
+
+export function isOtpExpired(otpRecord) {
+  return new Date(otpRecord.expiresAt).getTime() <= Date.now();
+}
+
+export function hasOtpExceededAttempts(otpRecord) {
+  return otpRecord.attempts >= env.otp.maxAttempts;
+}
+
+========== backend\src\services\whatsapp.service.js ==========
+
+import { sendOtp } from '../providers/whatsapp_otp.provider.js';
+
+export async function sendWhatsAppOtp(phone, otp) {
+  return sendOtp(phone, otp);
+}
+
+========== backend\src\providers\whatsapp_otp.provider.js ==========
+
+import { env } from '../config/env.config.js';
+
+export async function sendOtp(phone, otp) {
+  const provider = process.env.OTP_PROVIDER || 'console';
+
+  if (provider === 'console') {
+    if (env.nodeEnv === 'production') {
+      throw new Error(
+        'Provider console tidak boleh digunakan di production.',
+      );
+    }
+
+    console.log('================================');
+    console.log('SAPULIDI OTP');
+    console.log(`Nomor HP : ${phone}`);
+    console.log(`Kode OTP : ${otp}`);
+    console.log('================================');
+
+    return { provider: 'console' };
+  }
+
+  if (provider !== 'meta') {
+    throw new Error('OTP_PROVIDER tidak dikenal.');
+  }
+
+  const {
+    WA_PHONE_NUMBER_ID,
+    WA_ACCESS_TOKEN,
+    WA_TEMPLATE_NAME,
+    WA_TEMPLATE_LANGUAGE,
+    WA_GRAPH_API_VERSION,
+  } = process.env;
+
+  if (
+    !WA_PHONE_NUMBER_ID
+    || !WA_ACCESS_TOKEN
+    || !WA_TEMPLATE_NAME
+    || !WA_GRAPH_API_VERSION
+  ) {
+    throw new Error('Konfigurasi WhatsApp Cloud API belum lengkap.');
+  }
+
+  const url =
+    `https://graph.facebook.com/${WA_GRAPH_API_VERSION}`
+    + `/${WA_PHONE_NUMBER_ID}/messages`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${WA_ACCESS_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      to: phone.replace('+', ''),
+      type: 'template',
+      template: {
+        name: WA_TEMPLATE_NAME,
+        language: {
+          code: WA_TEMPLATE_LANGUAGE || 'id',
+        },
+        components: [
+          {
+            type: 'body',
+            parameters: [
+              {
+                type: 'text',
+                text: otp,
+              },
+            ],
+          },
+        ],
+      },
+    }),
+  });
+
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    console.error('WhatsApp Cloud API gagal:', {
+      status: response.status,
+      error: result.error?.message || 'Unknown error',
+    });
+
+    throw new Error('Gagal mengirim OTP melalui WhatsApp.');
+  }
+
+  return result;
+}
+
+========== frontend\lib\features\auth\data\datasources\auth_remote_datasource.dart ==========
+
+import 'package:dio/dio.dart';
+
+import '../../../../core/constants/api_endpoints.dart';
+import '../models/auth_session_model.dart';
+
+class AuthRemoteDataSource {
+  AuthRemoteDataSource(this._dio);
+
+  final Dio _dio;
+
+  Future<AuthSessionModel> register({
+    required String nama,
+    required String noHp,
+    required String blokRumah,
+    required String noRumah,
+    required String password,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.register,
+      data: {
+        'nama': nama,
+        'noHp': noHp,
+        'blokRumah': blokRumah,
+        'noRumah': noRumah,
+        'password': password,
+      },
+    );
+
+    final body = _readBody(response.data);
+    final data = _readData(body);
+
+    if (body['success'] != true) {
+      throw Exception(
+        body['message']?.toString() ?? 'Pendaftaran warga gagal.',
+      );
+    }
+
+    final session = AuthSessionModel.fromJson(data);
+
+    if (session.accessToken.isEmpty) {
+      throw Exception(
+        'Server tidak mengembalikan access token setelah registrasi.',
+      );
+    }
+
+    return session;
+  }
+
+  Future<Map<String, dynamic>> login({
+    required String noHp,
+    required String password,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.login,
+      data: {
+        'noHp': noHp,
+        'password': password,
+      },
+    );
+
+    final body = _readBody(response.data);
+    final data = _readData(body);
+
+    final challengeId = data['challengeId']?.toString();
+
+    if (body['success'] != true || challengeId == null || challengeId.isEmpty) {
+      throw Exception(
+        body['message']?.toString() ??
+            'Respons login tidak memiliki challenge OTP.',
+      );
+    }
+
+    return {
+      'challengeId': challengeId,
+      'phoneMasked': data['phoneMasked']?.toString() ?? noHp,
+      'expiresIn': data['expiresIn'] ?? 300,
+    };
+  }
+
+  Future<void> requestOtp({
+    required String challengeId,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.requestOtp,
+      data: {
+        'challengeId': challengeId,
+      },
+    );
+
+    final body = _readBody(response.data);
+
+    if (body['success'] != true) {
+      throw Exception(
+        body['message']?.toString() ?? 'Gagal mengirim ulang kode OTP.',
+      );
+    }
+  }
+
+  Future<AuthSessionModel> verifyOtp({
+    required String challengeId,
+    required String otp,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.verifyOtp,
+      data: {
+        'challengeId': challengeId,
+        'otp': otp,
+      },
+    );
+
+    final body = _readBody(response.data);
+    final data = _readData(body);
+
+    if (body['success'] != true) {
+      throw Exception(
+        body['message']?.toString() ?? 'Verifikasi OTP gagal.',
+      );
+    }
+
+    final session = AuthSessionModel.fromJson(data);
+
+    if (session.accessToken.isEmpty) {
+      throw Exception(
+        'Access token tidak ditemukan setelah verifikasi OTP.',
+      );
+    }
+
+    return session;
+  }
+
+  Map<String, dynamic> _readBody(dynamic responseData) {
+    if (responseData is Map<String, dynamic>) {
+      return responseData;
+    }
+
+    throw Exception('Format respons server tidak valid.');
+  }
+
+  Map<String, dynamic> _readData(
+    Map<String, dynamic> body,
+  ) {
+    final data = body['data'];
+
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+
+    throw Exception('Data respons server tidak ditemukan.');
+  }
+}
+
+
+========== frontend\lib\features\auth\data\models\auth_session_model.dart ==========
+
+class AuthSessionModel {
+  const AuthSessionModel({
+    required this.accessToken,
+    required this.tokenType,
+    required this.user,
+  });
+
+  final String accessToken;
+  final String tokenType;
+  final Map<String, dynamic> user;
+
+  factory AuthSessionModel.fromJson(
+    Map<String, dynamic> json,
+  ) {
+    final dynamic userData = json['user'];
+
+    return AuthSessionModel(
+      accessToken: json['accessToken']?.toString() ?? '',
+      tokenType: json['tokenType']?.toString() ?? 'Bearer',
+      user: userData is Map
+          ? Map<String, dynamic>.from(userData)
+          : <String, dynamic>{},
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'accessToken': accessToken,
+      'tokenType': tokenType,
+      'user': user,
+    };
+  }
+
+  bool get hasValidToken => accessToken.isNotEmpty;
+
+  AuthSessionModel copyWith({
+    String? accessToken,
+    String? tokenType,
+    Map<String, dynamic>? user,
+  }) {
+    return AuthSessionModel(
+      accessToken: accessToken ?? this.accessToken,
+      tokenType: tokenType ?? this.tokenType,
+      user: user ?? this.user,
+    );
+  }
+}
+
+
+========== frontend\lib\features\auth\presentation\pages\login_page.dart ==========
+
+import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+
+import '../../../../core/network/dio_client.dart';
+import '../../data/datasources/auth_remote_datasource.dart';
+import 'forgot_password_page.dart';
+import 'otp_verification_page.dart';
+import 'register_page.dart';
+
+class LoginPage extends StatefulWidget {
+  const LoginPage({super.key});
+
+  @override
+  State<LoginPage> createState() => _LoginPageState();
+}
+
+class _LoginPageState extends State<LoginPage> {
+  static const Color _green = Color(0xFF006130);
+  static const Color _surface = Color(0xFFFAF8FF);
+  static const Color _text = Color(0xFF131B2E);
+  static const Color _muted = Color(0xFF667085);
+  static const Color _outline = Color(0xFFBECABD);
+
+  final _formKey = GlobalKey<FormState>();
+  final _phoneController = TextEditingController();
+  final _passwordController = TextEditingController();
+
+  late final Dio _dio;
+  late final AuthRemoteDataSource _authDataSource;
+
+  bool _rememberMe = false;
+  bool _obscurePassword = true;
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _dio = DioClient.create();
+    _authDataSource = AuthRemoteDataSource(_dio);
+  }
+
+  @override
+  void dispose() {
+    _phoneController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
+
+  String _normalizePhone(String value) {
+    var phone = value.replaceAll(RegExp(r'\D'), '');
+
+    if (phone.startsWith('0')) {
+      phone = phone.substring(1);
+    } else if (phone.startsWith('62')) {
+      phone = phone.substring(2);
+    }
+
+    return '+62$phone';
+  }
+
+  Future<void> _handleLogin() async {
+    FocusScope.of(context).unfocus();
+
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final phone = _normalizePhone(
+        _phoneController.text,
+      );
+
+      final result = await _authDataSource.login(
+        noHp: phone,
+        password: _passwordController.text,
+      );
+
+      if (!mounted) return;
+
+      final verified = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => OtpVerificationPage(
+            challengeId: result['challengeId'] as String,
+            phoneNumber: result['phoneMasked'] as String,
+            expiresIn: int.tryParse(
+                  result['expiresIn'].toString(),
+                ) ??
+                300,
+          ),
+        ),
+      );
+
+      if (!mounted) return;
+
+      if (verified == true) {
+        _showMessage(
+          'Verifikasi berhasil. Sesi autentikasi telah disimpan.',
+        );
+      }
+    } on DioException catch (error) {
+      final responseData = error.response?.data;
+
+      final message =
+          responseData is Map ? responseData['message']?.toString() : null;
+
+      _showMessage(
+        message ?? 'Tidak dapat terhubung ke server.',
+      );
+    } catch (error) {
+      _showMessage(
+        error.toString().replaceFirst('Exception: ', ''),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  void _openForgotPassword() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const ForgotPasswordPage(),
+      ),
+    );
+  }
+
+  void _openRegister() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const RegisterPage(),
+      ),
+    );
+  }
+
+  String? _validatePhone(String? value) {
+    final phone = value?.replaceAll(RegExp(r'\D'), '') ?? '';
+
+    if (phone.isEmpty) {
+      return 'Nomor HP wajib diisi';
+    }
+
+    if (phone.length < 9 || phone.length > 13) {
+      return 'Masukkan nomor HP yang valid';
+    }
+
+    return null;
+  }
+
+  String? _validatePassword(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Password wajib diisi';
+    }
+
+    if (value.length < 8) {
+      return 'Password minimal 8 karakter';
+    }
+
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _surface,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              _buildHeader(),
+              _buildHero(),
+              Transform.translate(
+                offset: const Offset(0, -24),
+                child: _buildLoginCard(),
+              ),
+              Transform.translate(
+                offset: const Offset(0, -12),
+                child: _buildFooter(),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 12),
+      child: Row(
+        children: [
+          _roundIconButton(
+            icon: Icons.arrow_back_rounded,
+            onTap: () => Navigator.maybePop(context),
+          ),
+          const Spacer(),
+          _brandPill(),
+          const Spacer(),
+          const CircleAvatar(
+            radius: 21,
+            backgroundColor: Color(0xFFE2E7FD),
+            child: Icon(
+              Icons.person_rounded,
+              color: _green,
+              size: 24,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _brandPill() {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 13,
+        vertical: 8,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(
+          color: const Color(0xFFE5EAE4),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.cleaning_services_rounded,
+            color: _green,
+            size: 17,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            'SapuLidi',
+            style: GoogleFonts.plusJakartaSans(
+              fontWeight: FontWeight.w800,
+              fontSize: 13,
+              color: _green,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _roundIconButton({
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.white,
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: SizedBox(
+          width: 42,
+          height: 42,
+          child: Icon(
+            icon,
+            color: _text,
+            size: 21,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHero() {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.fromLTRB(24, 28, 24, 48),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Color(0xFF084C27),
+            Color(0xFF0D6535),
+            Color(0xFF107C41),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.all(
+          Radius.circular(28),
+        ),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.14),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.25),
+              ),
+            ),
+            child: const Icon(
+              Icons.cleaning_services_rounded,
+              color: Colors.white,
+              size: 30,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'PORTAL WARGA DIGITAL',
+            style: GoogleFonts.inter(
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 2,
+              color: const Color(0xFFB6FFC5),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Selamat Datang\nKembali!',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 27,
+              height: 1.25,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Silakan masuk ke akun warga RT Anda untuk mengakses layanan & iuran.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              height: 1.6,
+              color: Colors.white.withValues(alpha: 0.85),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLoginCard() {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(26),
+        boxShadow: [
+          BoxShadow(
+            color: _green.withValues(alpha: 0.07),
+            blurRadius: 30,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Masuk ke Akun Anda',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 19,
+                fontWeight: FontWeight.w800,
+                color: _text,
+              ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              'Gunakan nomor HP yang sudah terdaftar.',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                color: _muted,
+              ),
+            ),
+            const SizedBox(height: 24),
+            _fieldLabel('Nomor HP'),
+            const SizedBox(height: 8),
+            _buildPhoneField(),
+            const SizedBox(height: 18),
+            _fieldLabel('Kata Sandi'),
+            const SizedBox(height: 8),
+            _buildPasswordField(),
+            const SizedBox(height: 12),
+            _buildFormOptions(),
+            const SizedBox(height: 22),
+            SizedBox(
+              width: double.infinity,
+              height: 54,
+              child: ElevatedButton.icon(
+                onPressed: _isLoading ? null : _handleLogin,
+                icon: _isLoading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.arrow_forward_rounded),
+                label: Text(
+                  _isLoading ? 'Memproses...' : 'Masuk',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _green,
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor: _green.withValues(
+                    alpha: 0.6,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            _buildInfoBox(),
+            const SizedBox(height: 22),
+            Center(
+              child: Wrap(
+                alignment: WrapAlignment.center,
+                children: [
+                  Text(
+                    'Belum punya akun warga? ',
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      color: _muted,
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: _openRegister,
+                    child: Text(
+                      'Daftar Sekarang',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: _green,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _fieldLabel(String label) {
+    return Text(
+      label,
+      style: GoogleFonts.inter(
+        fontSize: 12,
+        fontWeight: FontWeight.w700,
+        color: _text,
+      ),
+    );
+  }
+
+  Widget _buildPhoneField() {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: _outline),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 13),
+            child: Text(
+              '+62',
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: _text,
+              ),
+            ),
+          ),
+          Container(
+            width: 1,
+            height: 25,
+            color: _outline,
+          ),
+          Expanded(
+            child: TextFormField(
+              controller: _phoneController,
+              keyboardType: TextInputType.phone,
+              validator: _validatePhone,
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                color: _text,
+              ),
+              decoration: InputDecoration(
+                hintText: '812-3456-7890',
+                hintStyle: GoogleFonts.inter(
+                  fontSize: 13,
+                  color: const Color(0xFF98A2B3),
+                ),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 16,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPasswordField() {
+    return TextFormField(
+      controller: _passwordController,
+      obscureText: _obscurePassword,
+      validator: _validatePassword,
+      style: GoogleFonts.inter(
+        fontSize: 14,
+        color: _text,
+      ),
+      decoration: InputDecoration(
+        hintText: 'Masukkan kata sandi',
+        hintStyle: GoogleFonts.inter(
+          fontSize: 13,
+          color: const Color(0xFF98A2B3),
+        ),
+        prefixIcon: const Icon(
+          Icons.lock_outline_rounded,
+          size: 19,
+          color: _muted,
+        ),
+        suffixIcon: IconButton(
+          onPressed: () {
+            setState(() {
+              _obscurePassword = !_obscurePassword;
+            });
+          },
+          icon: Icon(
+            _obscurePassword
+                ? Icons.visibility_off_outlined
+                : Icons.visibility_outlined,
+            size: 19,
+            color: _muted,
+          ),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 16,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: _outline),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(
+            color: _green,
+            width: 1.5,
+          ),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Colors.red),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(
+            color: Colors.red,
+            width: 1.5,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFormOptions() {
+    return Row(
+      children: [
+        SizedBox(
+          height: 28,
+          child: Checkbox(
+            value: _rememberMe,
+            activeColor: _green,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(5),
+            ),
+            onChanged: (value) {
+              setState(() {
+                _rememberMe = value ?? false;
+              });
+            },
+          ),
+        ),
+        Text(
+          'Ingat Saya',
+          style: GoogleFonts.inter(
+            fontSize: 11,
+            color: _muted,
+          ),
+        ),
+        const Spacer(),
+        GestureDetector(
+          onTap: _openForgotPassword,
+          child: Text(
+            'Lupa Password?',
+            style: GoogleFonts.inter(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: _green,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInfoBox() {
+    return Container(
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0F8F2),
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(
+          color: const Color(0xFFD9EBDD),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.shield_outlined,
+            size: 19,
+            color: _green,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Keamanan akun dilindungi dengan verifikasi dua langkah. '
+              'Setelah password benar, kode OTP akan dikirim ke nomor HP terdaftar.',
+              style: GoogleFonts.inter(
+                fontSize: 10,
+                height: 1.6,
+                color: const Color(0xFF315C40),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFooter() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.shield_outlined,
+                color: _green,
+                size: 16,
+              ),
+              const SizedBox(width: 7),
+              Text(
+                'Dilindungi enkripsi data kependudukan RT/RW',
+                style: GoogleFonts.inter(
+                  fontSize: 9,
+                  color: _muted,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'RT 04 / RW 07 • Kel. Sukamaju',
+            style: GoogleFonts.inter(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: _green,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+========== frontend\lib\features\auth\presentation\pages\otp_verification_page.dart ==========
+
+import 'dart:async';
+
+import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+
+import '../../../../core/network/dio_client.dart';
+import '../../../../core/storage/secure_storage.dart';
+import '../../data/datasources/auth_remote_datasource.dart';
+
+class OtpVerificationPage extends StatefulWidget {
+  const OtpVerificationPage({
+    super.key,
+    required this.challengeId,
+    required this.phoneNumber,
+    this.expiresIn = 300,
+  });
+
+  final String challengeId;
+  final String phoneNumber;
+  final int expiresIn;
+
+  @override
+  State<OtpVerificationPage> createState() => _OtpVerificationPageState();
+}
+
+class _OtpVerificationPageState extends State<OtpVerificationPage> {
+  static const Color _green = Color(0xFF006130);
+
+  final _otpController = TextEditingController();
+
+  late final Dio _dio;
+  late final AuthRemoteDataSource _authDataSource;
+
+  Timer? _timer;
+
+  int _remainingSeconds = 300;
+  bool _isVerifying = false;
+  bool _isResending = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _dio = DioClient.create();
+    _authDataSource = AuthRemoteDataSource(_dio);
+
+    _remainingSeconds = widget.expiresIn > 0 ? widget.expiresIn : 300;
+
+    _startTimer();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _otpController.dispose();
+    super.dispose();
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+
+    _timer = Timer.periodic(
+      const Duration(seconds: 1),
+      (timer) {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+
+        if (_remainingSeconds <= 1) {
+          timer.cancel();
+
+          setState(() {
+            _remainingSeconds = 0;
+          });
+        } else {
+          setState(() {
+            _remainingSeconds--;
+          });
+        }
+      },
+    );
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
+
+  Future<void> _verifyOtp() async {
+    FocusScope.of(context).unfocus();
+
+    final otp = _otpController.text.trim();
+
+    if (!RegExp(r'^\d{6}$').hasMatch(otp)) {
+      _showMessage('Masukkan kode OTP 6 digit.');
+      return;
+    }
+
+    setState(() => _isVerifying = true);
+
+    try {
+      final session = await _authDataSource.verifyOtp(
+        challengeId: widget.challengeId,
+        otp: otp,
+      );
+
+      await SecureStorage().saveAccessToken(
+        session.accessToken,
+      );
+
+      if (!mounted) return;
+
+      Navigator.pop(context, true);
+    } on DioException catch (error) {
+      final message = error.response?.data is Map
+          ? error.response?.data['message']?.toString()
+          : null;
+
+      _showMessage(
+        message ?? 'Tidak dapat menghubungi server.',
+      );
+    } catch (error) {
+      _showMessage(
+        error.toString().replaceFirst('Exception: ', ''),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isVerifying = false);
+      }
+    }
+  }
+
+  Future<void> _resendOtp() async {
+    setState(() => _isResending = true);
+
+    try {
+      await _authDataSource.requestOtp(
+        challengeId: widget.challengeId,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _remainingSeconds = 300;
+      });
+
+      _startTimer();
+
+      _showMessage('Kode OTP berhasil dikirim ulang.');
+    } on DioException catch (error) {
+      final message = error.response?.data is Map
+          ? error.response?.data['message']?.toString()
+          : null;
+
+      _showMessage(
+        message ?? 'Gagal mengirim ulang kode OTP.',
+      );
+    } catch (error) {
+      _showMessage(error.toString());
+    } finally {
+      if (mounted) {
+        setState(() => _isResending = false);
+      }
+    }
+  }
+
+  String get _formattedTime {
+    final minutes = (_remainingSeconds ~/ 60).toString().padLeft(2, '0');
+
+    final seconds = (_remainingSeconds % 60).toString().padLeft(2, '0');
+
+    return '$minutes:$seconds';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFFAF8FF),
+      appBar: AppBar(
+        title: Text(
+          'Verifikasi OTP',
+          style: GoogleFonts.plusJakartaSans(
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(22),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const SizedBox(height: 35),
+              Container(
+                width: 76,
+                height: 76,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEAF7ED),
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: const Icon(
+                  Icons.verified_user_rounded,
+                  color: _green,
+                  size: 38,
+                ),
+              ),
+              const SizedBox(height: 25),
+              Text(
+                'Satu Langkah Lagi!',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 23,
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF131B2E),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Masukkan kode OTP 6 digit yang dikirimkan '
+                'ke nomor HP kamu.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  height: 1.6,
+                  color: const Color(0xFF667085),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                widget.phoneNumber,
+                style: GoogleFonts.inter(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: _green,
+                ),
+              ),
+              const SizedBox(height: 35),
+              TextField(
+                controller: _otpController,
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+                autofocus: true,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(
+                  fontSize: 27,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 12,
+                  color: _green,
+                ),
+                decoration: InputDecoration(
+                  counterText: '',
+                  hintText: '------',
+                  hintStyle: GoogleFonts.inter(
+                    fontSize: 24,
+                    letterSpacing: 9,
+                    color: const Color(0xFFBECABD),
+                  ),
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(
+                      color: Color(0xFFBECABD),
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(
+                      color: Color(0xFFBECABD),
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(
+                      color: _green,
+                      width: 1.5,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                _remainingSeconds > 0
+                    ? 'Kode berlaku selama $_formattedTime'
+                    : 'Kode OTP telah kedaluwarsa.',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  color: const Color(0xFF667085),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextButton(
+                onPressed:
+                    _remainingSeconds == 0 && !_isResending ? _resendOtp : null,
+                child: _isResending
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : Text(
+                        'Kirim Ulang Kode OTP',
+                        style: GoogleFonts.inter(
+                          fontWeight: FontWeight.w800,
+                          color: _green,
+                        ),
+                      ),
+              ),
+              const SizedBox(height: 28),
+              SizedBox(
+                width: double.infinity,
+                height: 54,
+                child: ElevatedButton(
+                  onPressed: _isVerifying ? null : _verifyOtp,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _green,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: _isVerifying
+                      ? const CircularProgressIndicator(
+                          color: Colors.white,
+                        )
+                      : Text(
+                          'Verifikasi Sekarang',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                ),
+              ),
+              const SizedBox(height: 15),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(
+                  'Kembali ke Login',
+                  style: GoogleFonts.inter(
+                    color: const Color(0xFF667085),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+
+========== frontend\lib\core\storage\secure_storage.dart ==========
+
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+class SecureStorage {
+  SecureStorage() : _storage = const FlutterSecureStorage();
+
+  final FlutterSecureStorage _storage;
+
+  static const String _accessTokenKey = 'access_token';
+
+  Future<void> saveAccessToken(String token) async {
+    await _storage.write(
+      key: _accessTokenKey,
+      value: token,
+    );
+  }
+
+  Future<String?> getAccessToken() async {
+    return _storage.read(key: _accessTokenKey);
+  }
+
+  Future<void> deleteAccessToken() async {
+    await _storage.delete(key: _accessTokenKey);
+  }
+}
+
+
+========== frontend\lib\core\network\dio_client.dart ==========
+
+import 'package:dio/dio.dart';
+
+import '../constants/api_endpoints.dart';
+
+abstract final class DioClient {
+  static Dio create() {
+    return Dio(
+      BaseOptions(
+        baseUrl: ApiEndpoints.baseUrl,
+        connectTimeout: const Duration(seconds: 15),
+        receiveTimeout: const Duration(seconds: 15),
+        sendTimeout: const Duration(seconds: 15),
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+      ),
+    );
+  }
+}
+
+
+========== frontend\lib\features\home\presentation\pages\home_page.dart ==========
+
+
+========== frontend\lib\features\home\presentation\pages\main_shell_page.dart ==========
+
+
+========== frontend\lib\main.dart ==========
+
+import 'package:flutter/material.dart';
+
+import 'core/theme/app_theme.dart';
+import 'features/onboarding/presentation/pages/onboarding_page.dart';
+
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  runApp(const SapuLidiApp());
+}
+
+class SapuLidiApp extends StatelessWidget {
+  const SapuLidiApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'SapuLidi SuperApp RT',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.light,
+      home: const OnboardingPage(),
+    );
+  }
+}
+

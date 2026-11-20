@@ -1,0 +1,1031 @@
+﻿
+
+========== backend/src/services/otp.service.js ==========
+
+import { env } from '../config/env.config.js';
+import {
+  generateOtp,
+  hashOtp,
+} from '../utils/hash.js';
+
+export function createOtpForPhone(phone, purpose) {
+  const otp = generateOtp();
+
+  const expiresAt = new Date(
+    Date.now() + env.otp.expiresMinutes * 60 * 1000,
+  );
+
+  return {
+    otp,
+    otpHash: hashOtp(phone, purpose, otp),
+    expiresAt,
+  };
+}
+
+export function isOtpExpired(otpRecord) {
+  return new Date(otpRecord.expiresAt).getTime() <= Date.now();
+}
+
+export function hasOtpExceededAttempts(otpRecord) {
+  return otpRecord.attempts >= env.otp.maxAttempts;
+}
+
+
+========== backend/src/services/whatsapp.service.js ==========
+
+import { sendOtp } from '../providers/whatsapp_otp.provider.js';
+
+export async function sendWhatsAppOtp(phone, otp) {
+  return sendOtp(phone, otp);
+}
+
+
+========== backend/src/repositories/otp.repository.js ==========
+
+import { pool } from '../config/database.js';
+
+export async function findLatestActiveOtp(phone, purpose, client = pool) {
+  const result = await client.query(
+    `SELECT *
+     FROM public."AuthOtp"
+     WHERE "noHp" = $1
+       AND purpose = $2
+       AND "consumedAt" IS NULL
+     ORDER BY "createdAt" DESC
+     LIMIT 1`,
+    [phone, purpose],
+  );
+
+  return result.rows[0] || null;
+}
+
+export async function createOtp({
+  phone,
+  purpose,
+  otpHash,
+  expiresAt,
+}, client = pool) {
+  const result = await client.query(
+    `INSERT INTO public."AuthOtp" (
+      id,
+      "noHp",
+      purpose,
+      "otpHash",
+      "expiresAt",
+      attempts,
+      "createdAt"
+    )
+    VALUES (
+      gen_random_uuid(),
+      $1,
+      $2,
+      $3,
+      $4,
+      0,
+      CURRENT_TIMESTAMP
+    )
+    RETURNING id, "noHp", purpose, "expiresAt", "createdAt"`,
+    [phone, purpose, otpHash, expiresAt],
+  );
+
+  return result.rows[0];
+}
+
+export async function consumeOtp(id, client = pool) {
+  await client.query(
+    `UPDATE public."AuthOtp"
+     SET "consumedAt" = CURRENT_TIMESTAMP
+     WHERE id = $1
+       AND "consumedAt" IS NULL`,
+    [id],
+  );
+}
+
+export async function incrementOtpAttempts(id, client = pool) {
+  await client.query(
+    `UPDATE public."AuthOtp"
+     SET attempts = attempts + 1
+     WHERE id = $1`,
+    [id],
+  );
+}
+
+export async function consumePreviousOtps(phone, purpose, client = pool) {
+  await client.query(
+    `UPDATE public."AuthOtp"
+     SET "consumedAt" = CURRENT_TIMESTAMP
+     WHERE "noHp" = $1
+       AND purpose = $2
+       AND "consumedAt" IS NULL`,
+    [phone, purpose],
+  );
+}
+
+
+========== backend/src/config/constants.config.js ==========
+
+export const USER_ROLES = Object.freeze({
+  WARGA: 'WARGA',
+  KOORDINATOR: 'KOORDINATOR',
+  BENDAHARA: 'BENDAHARA',
+  KETUA_RT: 'KETUA_RT',
+  PETUGAS_KEAMANAN: 'PETUGAS_KEAMANAN',
+});
+
+export const USER_STATUS = Object.freeze({
+  PENDING: 'PENDING',
+  AKTIF: 'AKTIF',
+  DITOLAK: 'DITOLAK',
+});
+
+export const OTP_PURPOSE = Object.freeze({
+  LOGIN: 'LOGIN',
+  RESET_PASSWORD: 'RESET_PASSWORD',
+});
+
+export const OTP_LENGTH = 6;
+export const OTP_RESEND_INTERVAL_SECONDS = 60;
+export const PASSWORD_MIN_LENGTH = 8;
+
+
+========== backend/src/config/env.config.js ==========
+
+import 'dotenv/config';
+
+const requiredVariables = [
+  'DB_HOST',
+  'DB_PORT',
+  'DB_NAME',
+  'DB_USER',
+  'DB_PASSWORD',
+  'JWT_SECRET',
+  'OTP_RESET_SECRET',
+  'OTP_HASH_SECRET',
+];
+
+for (const variable of requiredVariables) {
+  if (!process.env[variable]?.trim()) {
+    throw new Error(`Environment variable ${variable} belum diatur.`);
+  }
+}
+
+for (const variable of [
+  'JWT_SECRET',
+  'OTP_RESET_SECRET',
+  'OTP_HASH_SECRET',
+]) {
+  if (process.env[variable].length < 32) {
+    throw new Error(`${variable} minimal harus 32 karakter.`);
+  }
+}
+
+const port = Number(process.env.DB_PORT);
+
+if (!Number.isInteger(port) || port < 1 || port > 65535) {
+  throw new Error('DB_PORT tidak valid.');
+}
+
+export const env = Object.freeze({
+  nodeEnv: process.env.NODE_ENV || 'development',
+  port: Number(process.env.PORT) || 3000,
+  host: process.env.HOST || '0.0.0.0',
+  database: {
+    host: process.env.DB_HOST,
+    port,
+    name: process.env.DB_NAME,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    ssl: process.env.DB_SSL === 'true',
+  },
+  jwt: {
+    secret: process.env.JWT_SECRET,
+    expiresIn: process.env.JWT_EXPIRES_IN || '7d',
+    resetSecret: process.env.OTP_RESET_SECRET,
+  },
+  otp: {
+    hashSecret: process.env.OTP_HASH_SECRET,
+    expiresMinutes: Number(process.env.OTP_EXPIRES_MINUTES) || 5,
+    maxAttempts: Number(process.env.OTP_MAX_ATTEMPTS) || 5,
+  },
+  corsOrigins: (process.env.CORS_ORIGIN || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+});
+
+
+========== backend/src/utils/jwt.js ==========
+
+import jwt from 'jsonwebtoken';
+
+import { jwtConfig } from '../config/jwt.config.js';
+import { createPasswordFingerprint } from './hash.js';
+
+export function createAccessToken(user) {
+  return jwt.sign(
+    {
+      role: user.role,
+      type: 'access',
+    },
+    jwtConfig.accessSecret,
+    {
+      subject: user.id,
+      expiresIn: jwtConfig.accessExpiresIn,
+    },
+  );
+}
+
+export function verifyAccessToken(token) {
+  return jwt.verify(token, jwtConfig.accessSecret);
+}
+
+export function createResetToken(user) {
+  return jwt.sign(
+    {
+      type: 'password_reset',
+      passwordFingerprint: createPasswordFingerprint(user.password),
+    },
+    jwtConfig.resetSecret,
+    {
+      subject: user.id,
+      expiresIn: jwtConfig.resetExpiresIn,
+    },
+  );
+}
+
+export function verifyResetToken(token) {
+  return jwt.verify(token, jwtConfig.resetSecret);
+}
+
+
+========== backend/src/utils/hash.js ==========
+
+import bcrypt from 'bcryptjs';
+import crypto from 'node:crypto';
+
+import { env } from '../config/env.config.js';
+
+const BCRYPT_ROUNDS = 12;
+
+export async function hashPassword(password) {
+  return bcrypt.hash(password, BCRYPT_ROUNDS);
+}
+
+export async function comparePassword(password, hashedPassword) {
+  return bcrypt.compare(password, hashedPassword);
+}
+
+export function hashOtp(phone, purpose, otp) {
+  return crypto
+    .createHmac('sha256', env.otp.hashSecret)
+    .update(`${phone}:${purpose}:${otp}`)
+    .digest('hex');
+}
+
+export function generateOtp() {
+  return crypto.randomInt(0, 1000000).toString().padStart(6, '0');
+}
+
+export function safeCompareHash(firstHash, secondHash) {
+  if (
+    typeof firstHash !== 'string'
+    || typeof secondHash !== 'string'
+    || !/^[a-f0-9]{64}$/i.test(firstHash)
+    || !/^[a-f0-9]{64}$/i.test(secondHash)
+  ) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(
+    Buffer.from(firstHash, 'hex'),
+    Buffer.from(secondHash, 'hex'),
+  );
+}
+
+export function createPasswordFingerprint(passwordHash) {
+  return crypto
+    .createHash('sha256')
+    .update(passwordHash)
+    .digest('hex');
+}
+
+
+========== backend/src/middlewares/rate_limiter.middleware.js ==========
+
+
+import { rateLimit } from 'express-rate-limit';
+
+export const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Terlalu banyak percobaan. Silakan coba kembali nanti.',
+  },
+});
+
+export const otpRequestLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Permintaan OTP terlalu banyak. Silakan coba kembali nanti.',
+  },
+});
+
+export const otpVerifyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Percobaan verifikasi OTP terlalu banyak. Silakan coba kembali nanti.',
+  },
+});
+
+export const passwordResetLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Percobaan reset password terlalu banyak. Silakan coba kembali nanti.',
+  },
+});
+
+
+
+========== frontend/lib/features/auth/data/models/auth_session_model.dart ==========
+
+class AuthSessionModel {
+  const AuthSessionModel({
+    required this.accessToken,
+    required this.tokenType,
+    required this.user,
+  });
+
+  final String accessToken;
+  final String tokenType;
+  final Map<String, dynamic> user;
+
+  factory AuthSessionModel.fromJson(
+    Map<String, dynamic> json,
+  ) {
+    final dynamic userData = json['user'];
+
+    return AuthSessionModel(
+      accessToken: json['accessToken']?.toString() ?? '',
+      tokenType: json['tokenType']?.toString() ?? 'Bearer',
+      user: userData is Map
+          ? Map<String, dynamic>.from(userData)
+          : <String, dynamic>{},
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'accessToken': accessToken,
+      'tokenType': tokenType,
+      'user': user,
+    };
+  }
+
+  bool get hasValidToken => accessToken.isNotEmpty;
+
+  AuthSessionModel copyWith({
+    String? accessToken,
+    String? tokenType,
+    Map<String, dynamic>? user,
+  }) {
+    return AuthSessionModel(
+      accessToken: accessToken ?? this.accessToken,
+      tokenType: tokenType ?? this.tokenType,
+      user: user ?? this.user,
+    );
+  }
+}
+
+
+
+========== frontend/lib/core/network/dio_client.dart ==========
+
+import 'package:dio/dio.dart';
+
+import '../constants/api_endpoints.dart';
+
+abstract final class DioClient {
+  static Dio create() {
+    return Dio(
+      BaseOptions(
+        baseUrl: ApiEndpoints.baseUrl,
+        connectTimeout: const Duration(seconds: 15),
+        receiveTimeout: const Duration(seconds: 15),
+        sendTimeout: const Duration(seconds: 15),
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+      ),
+    );
+  }
+}
+
+
+
+========== frontend/lib/features/onboarding/presentation/pages/onboarding_page.dart ==========
+
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+
+import '../../../../core/widgets/app_primary_button.dart';
+import '../../../auth/presentation/pages/login_page.dart';
+
+class OnboardingPage extends StatefulWidget {
+  const OnboardingPage({
+    super.key,
+    this.onStart,
+    this.onLogin,
+    this.onSkip,
+  });
+
+  final VoidCallback? onStart;
+  final VoidCallback? onLogin;
+  final VoidCallback? onSkip;
+
+  @override
+  State<OnboardingPage> createState() => _OnboardingPageState();
+}
+
+class _OnboardingPageState extends State<OnboardingPage> {
+  static const Color _green = Color(0xFF006130);
+  static const Color _surface = Color(0xFFFAF8FF);
+  static const Color _text = Color(0xFF131B2E);
+  static const Color _muted = Color(0xFF667085);
+
+  final PageController _pageController = PageController();
+
+  Timer? _timer;
+  int _activePage = 0;
+
+  final List<_OnboardingSlide> _slides = const [
+    _OnboardingSlide(
+      title: 'Selamat Datang di SapuLidi',
+      description:
+          'Solusi digital terpadu manajemen RT/RW. Cek iuran, pinjam inventaris gotong royong, dan urus administrasi warga lebih cepat & transparan.',
+    ),
+    _OnboardingSlide(
+      title: 'Urus Administrasi Lebih Mudah',
+      description:
+          'Akses berbagai layanan administrasi lingkungan dalam satu aplikasi. Lebih praktis, cepat, dan terorganisir.',
+    ),
+    _OnboardingSlide(
+      title: 'Wujudkan Lingkungan Guyub Rukun',
+      description:
+          'Bangun komunikasi dan kebersamaan antarwarga melalui ekosistem digital SapuLidi.',
+    ),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _startAutoSlide();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _startAutoSlide() {
+    _timer?.cancel();
+
+    _timer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!mounted || !_pageController.hasClients) return;
+
+      final nextPage = (_activePage + 1) % _slides.length;
+
+      _pageController.animateToPage(
+        nextPage,
+        duration: const Duration(milliseconds: 450),
+        curve: Curves.easeInOut,
+      );
+    });
+  }
+
+  void _onPageChanged(int index) {
+    setState(() => _activePage = index);
+  }
+
+  void _navigateToLogin(VoidCallback? callback) {
+    _timer?.cancel();
+
+    if (callback != null) {
+      callback();
+      return;
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const LoginPage(),
+      ),
+    );
+  }
+
+  void _handleStart() {
+    _navigateToLogin(widget.onStart);
+  }
+
+  void _handleLogin() {
+    _navigateToLogin(widget.onLogin);
+  }
+
+  void _handleSkip() {
+    _navigateToLogin(widget.onSkip);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _surface,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            _buildBackgroundDecorations(),
+            Column(
+              children: [
+                _buildHeader(),
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      return SingleChildScrollView(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                        ),
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            minHeight: constraints.maxHeight,
+                          ),
+                          child: Column(
+                            children: [
+                              const SizedBox(height: 8),
+                              _buildHeroImage(),
+                              const SizedBox(height: 24),
+                              _buildTagline(),
+                              const SizedBox(height: 20),
+                              _buildSlideContent(),
+                              const SizedBox(height: 20),
+                              _buildPagination(),
+                              const SizedBox(height: 24),
+                              AppPrimaryButton(
+                                label: 'Mulai Sekarang',
+                                icon: Icons.arrow_forward_rounded,
+                                height: 58,
+                                borderRadius: 18,
+                                onPressed: _handleStart,
+                              ),
+                              const SizedBox(height: 18),
+                              _buildLoginLink(),
+                              const SizedBox(height: 20),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBackgroundDecorations() {
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: Stack(
+          children: [
+            Positioned(
+              top: -100,
+              right: -100,
+              child: Container(
+                width: 260,
+                height: 260,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFFFFDBC8).withValues(
+                    alpha: 0.32,
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 250,
+              left: -140,
+              child: Container(
+                width: 260,
+                height: 260,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFF96F7AF).withValues(
+                    alpha: 0.18,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(22, 14, 22, 8),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 13,
+              vertical: 9,
+            ),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(
+                color: const Color(0xFFE5EAE4),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: const BoxDecoration(
+                    color: _green,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.cleaning_services_rounded,
+                    color: Colors.white,
+                    size: 16,
+                  ),
+                ),
+                const SizedBox(width: 9),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'SapuLidi',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: _text,
+                        height: 1.2,
+                      ),
+                    ),
+                    Text(
+                      'SUPERAPP RT',
+                      style: GoogleFonts.inter(
+                        fontSize: 8,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1,
+                        color: _green,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const Spacer(),
+          TextButton(
+            onPressed: _handleSkip,
+            style: TextButton.styleFrom(
+              foregroundColor: _muted,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 8,
+              ),
+            ),
+            child: Text(
+              'Lewati',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeroImage() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth.clamp(220.0, 340.0);
+
+        return SizedBox(
+          width: width,
+          height: width * 1.12,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned(
+                left: 10,
+                right: 10,
+                top: 8,
+                bottom: 4,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFE8D9),
+                    borderRadius: BorderRadius.circular(150).copyWith(
+                      bottomLeft: const Radius.circular(32),
+                      bottomRight: const Radius.circular(32),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                top: 0,
+                bottom: 0,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(32),
+                  child: Image.asset(
+                    'assets/images/onboarding_character.png',
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        alignment: Alignment.center,
+                        color: const Color(0xFFFFE8D9),
+                        child: const Icon(
+                          Icons.people_alt_rounded,
+                          size: 110,
+                          color: _green,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 22,
+                right: 0,
+                child: _heroBadge(
+                  icon: Icons.handshake_rounded,
+                  title: '100% Guyub Rukun',
+                  background: Colors.white,
+                  foreground: _green,
+                ),
+              ),
+              Positioned(
+                bottom: 24,
+                left: 0,
+                child: _heroBadge(
+                  icon: Icons.account_balance_wallet_rounded,
+                  title: 'Transparansi',
+                  subtitle: 'Kas RT Terbuka',
+                  background: _green,
+                  foreground: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _heroBadge({
+    required IconData icon,
+    required String title,
+    String? subtitle,
+    required Color background,
+    required Color foreground,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 12,
+        vertical: 10,
+      ),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: foreground, size: 18),
+          const SizedBox(width: 7),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                title,
+                style: GoogleFonts.inter(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: foreground,
+                ),
+              ),
+              if (subtitle != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: GoogleFonts.inter(
+                    fontSize: 9,
+                    color: foreground.withValues(alpha: 0.85),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTagline() {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 14,
+        vertical: 9,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEAF7ED),
+        borderRadius: BorderRadius.circular(30),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.handshake_outlined,
+            color: _green,
+            size: 17,
+          ),
+          const SizedBox(width: 7),
+          Text(
+            'Sahabat Rukun Tetangga & Warga',
+            style: GoogleFonts.inter(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: _green,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSlideContent() {
+    return SizedBox(
+      height: 130,
+      child: PageView.builder(
+        controller: _pageController,
+        itemCount: _slides.length,
+        onPageChanged: _onPageChanged,
+        itemBuilder: (context, index) {
+          final slide = _slides[index];
+
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Column(
+              children: [
+                RichText(
+                  textAlign: TextAlign.center,
+                  text: TextSpan(
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 23,
+                      height: 1.3,
+                      fontWeight: FontWeight.w800,
+                      color: _text,
+                    ),
+                    children: _buildTitleSpans(slide.title),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  slide.description,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    height: 1.7,
+                    color: _muted,
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  List<InlineSpan> _buildTitleSpans(String title) {
+    if (title == 'Selamat Datang di SapuLidi') {
+      return [
+        const TextSpan(text: 'Selamat Datang di '),
+        const TextSpan(
+          text: 'SapuLidi',
+          style: TextStyle(color: _green),
+        ),
+      ];
+    }
+
+    return [TextSpan(text: title)];
+  }
+
+  Widget _buildPagination() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(
+        _slides.length,
+        (index) {
+          final isActive = index == _activePage;
+
+          return GestureDetector(
+            onTap: () {
+              _pageController.animateToPage(
+                index,
+                duration: const Duration(milliseconds: 350),
+                curve: Curves.easeInOut,
+              );
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              width: isActive ? 25 : 7,
+              height: 7,
+              decoration: BoxDecoration(
+                color: isActive ? _green : const Color(0xFFD9E1D9),
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildLoginLink() {
+    return Center(
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        children: [
+          Text(
+            'Sudah punya akun warga? ',
+            style: GoogleFonts.inter(
+              fontSize: 11,
+              color: _muted,
+            ),
+          ),
+          GestureDetector(
+            onTap: _handleLogin,
+            child: Text(
+              'Masuk',
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: _green,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OnboardingSlide {
+  const _OnboardingSlide({
+    required this.title,
+    required this.description,
+  });
+
+  final String title;
+  final String description;
+}
+

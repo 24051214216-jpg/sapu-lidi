@@ -1,0 +1,254 @@
+
+
+========== src/repositories/user.repository.js ==========
+
+import { pool } from '../config/database.js';
+
+const USER_COLUMNS = `
+  id,
+  nama,
+  "noHp",
+  role,
+  status,
+  "blokRumah",
+  "noRumah",
+  "fotoProfil",
+  rt,
+  rw,
+  "createdAt",
+  "updatedAt"
+`;
+
+export async function findUserByPhone(phone, client = pool) {
+  const result = await client.query(
+    `SELECT ${USER_COLUMNS}, password, "deletedAt"
+     FROM public."User"
+     WHERE "noHp" = $1
+     LIMIT 1`,
+    [phone],
+  );
+
+  return result.rows[0] || null;
+}
+
+export async function findUserById(id, client = pool) {
+  const result = await client.query(
+    `SELECT ${USER_COLUMNS}, password, "deletedAt"
+     FROM public."User"
+     WHERE id = $1
+     LIMIT 1`,
+    [id],
+  );
+
+  return result.rows[0] || null;
+}
+
+export async function createUser(data, client = pool) {
+  const result = await client.query(
+    `INSERT INTO public."User" (
+      id,
+      nama,
+      "noHp",
+      password,
+      role,
+      status,
+      "blokRumah",
+      "noRumah",
+      "createdAt",
+      "updatedAt"
+    )
+    VALUES (
+      gen_random_uuid(),
+      $1,
+      $2,
+      $3,
+      'WARGA',
+      'AKTIF',
+      $4,
+      $5,
+      CURRENT_TIMESTAMP,
+      CURRENT_TIMESTAMP
+    )
+    RETURNING ${USER_COLUMNS}`,
+    [
+      data.nama,
+      data.noHp,
+      data.password,
+      data.blokRumah,
+      data.noRumah,
+    ],
+  );
+
+  return result.rows[0];
+}
+
+export async function updateUserPassword(id, password, client = pool) {
+  const result = await client.query(
+    `UPDATE public."User"
+     SET password = $1,
+         "updatedAt" = CURRENT_TIMESTAMP
+     WHERE id = $2
+       AND "deletedAt" IS NULL
+     RETURNING id`,
+    [password, id],
+  );
+
+  return result.rowCount > 0;
+}
+
+
+========== src/services/otp.service.js ==========
+
+import { env } from '../config/env.config.js';
+import {
+  generateOtp,
+  hashOtp,
+} from '../utils/hash.js';
+
+export function createOtpForPhone(phone, purpose) {
+  const otp = generateOtp();
+
+  const expiresAt = new Date(
+    Date.now() + env.otp.expiresMinutes * 60 * 1000,
+  );
+
+  return {
+    otp,
+    otpHash: hashOtp(phone, purpose, otp),
+    expiresAt,
+  };
+}
+
+export function isOtpExpired(otpRecord) {
+  return new Date(otpRecord.expiresAt).getTime() <= Date.now();
+}
+
+export function hasOtpExceededAttempts(otpRecord) {
+  return otpRecord.attempts >= env.otp.maxAttempts;
+}
+
+
+========== src/config/constants.config.js ==========
+
+export const USER_ROLES = Object.freeze({
+  WARGA: 'WARGA',
+  KOORDINATOR: 'KOORDINATOR',
+  BENDAHARA: 'BENDAHARA',
+  KETUA_RT: 'KETUA_RT',
+  PETUGAS_KEAMANAN: 'PETUGAS_KEAMANAN',
+});
+
+export const USER_STATUS = Object.freeze({
+  PENDING: 'PENDING',
+  AKTIF: 'AKTIF',
+  DITOLAK: 'DITOLAK',
+});
+
+export const OTP_PURPOSE = Object.freeze({
+  LOGIN: 'LOGIN',
+  RESET_PASSWORD: 'RESET_PASSWORD',
+});
+
+export const OTP_LENGTH = 6;
+export const OTP_RESEND_INTERVAL_SECONDS = 60;
+export const PASSWORD_MIN_LENGTH = 8;
+
+
+========== src/utils/hash.js ==========
+
+import bcrypt from 'bcryptjs';
+import crypto from 'node:crypto';
+
+import { env } from '../config/env.config.js';
+
+const BCRYPT_ROUNDS = 12;
+
+export async function hashPassword(password) {
+  return bcrypt.hash(password, BCRYPT_ROUNDS);
+}
+
+export async function comparePassword(password, hashedPassword) {
+  return bcrypt.compare(password, hashedPassword);
+}
+
+export function hashOtp(phone, purpose, otp) {
+  return crypto
+    .createHmac('sha256', env.otp.hashSecret)
+    .update(`${phone}:${purpose}:${otp}`)
+    .digest('hex');
+}
+
+export function generateOtp() {
+  return crypto.randomInt(0, 1000000).toString().padStart(6, '0');
+}
+
+export function safeCompareHash(firstHash, secondHash) {
+  if (
+    typeof firstHash !== 'string'
+    || typeof secondHash !== 'string'
+    || !/^[a-f0-9]{64}$/i.test(firstHash)
+    || !/^[a-f0-9]{64}$/i.test(secondHash)
+  ) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(
+    Buffer.from(firstHash, 'hex'),
+    Buffer.from(secondHash, 'hex'),
+  );
+}
+
+export function createPasswordFingerprint(passwordHash) {
+  return crypto
+    .createHash('sha256')
+    .update(passwordHash)
+    .digest('hex');
+}
+
+
+========== src/routes/v1/auth.routes.js ==========
+
+
+import { Router } from 'express';
+
+import {
+  register,
+  login,
+  requestOtpController,
+  verifyOtpController,
+  resetPasswordController,
+  me,
+} from '../../controllers/auth.controller.js';
+
+import {
+  authenticateToken,
+} from '../../middlewares/auth.middleware.js';
+
+import {
+  authLimiter,
+  otpRequestLimiter,
+  otpVerifyLimiter,
+  passwordResetLimiter,
+} from '../../middlewares/rate_limiter.middleware.js';
+
+const router = Router();
+
+// Registrasi warga
+router.post('/register', authLimiter, register);
+
+// Login menggunakan nomor HP dan password
+router.post('/login', authLimiter, login);
+
+// Meminta OTP
+router.post('/otp/request', otpRequestLimiter, requestOtpController);
+
+// Verifikasi OTP
+router.post('/otp/verify', otpVerifyLimiter, verifyOtpController);
+
+// Reset password
+router.post('/password/reset', passwordResetLimiter, resetPasswordController);
+
+// Mendapatkan profil pengguna yang sedang login
+router.get('/me', authenticateToken, me);
+
+export default router;
