@@ -5,6 +5,7 @@ import '../../../../core/storage/secure_storage.dart';
 import '../../../onboarding/presentation/pages/onboarding_page.dart';
 import '../../../finance/presentation/pages/finance_page.dart';
 import '../../../inventory/presentation/pages/inventory_catalog_page.dart';
+import '../../../e_letter/presentation/pages/letter_request_page.dart';
 import 'home_page.dart';
 
 class MainShellPage extends StatefulWidget {
@@ -109,6 +110,15 @@ class _MainShellPageState extends State<MainShellPage> {
     });
   }
 
+  void _openESurat() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LetterRequestPage(user: _user),
+      ),
+    );
+  }
+
   void _showSosDialog() {
     showDialog<void>(
       context: context,
@@ -177,7 +187,9 @@ class _MainShellPageState extends State<MainShellPage> {
         return const InventoryCatalogPage();
 
       case 3:
-        return const _ServicesPage();
+        return _ServicesPage(
+          onOpenESurat: _openESurat,
+        );
 
       case 4:
         return _buildProfile();
@@ -532,7 +544,12 @@ class _MainShellPageState extends State<MainShellPage> {
 }
 
 class _ServicesPage extends StatelessWidget {
-  const _ServicesPage();
+  // Perbaikan: Menghapus 'super.key' karena tidak pernah dipanggil dari parent
+  const _ServicesPage({
+    required this.onOpenESurat,
+  });
+
+  final VoidCallback onOpenESurat;
 
   static const Color _green = Color(0xFF107C41);
   static const Color _text = Color(0xFF17251C);
@@ -577,58 +594,65 @@ class _ServicesPage extends StatelessWidget {
           ),
           const SizedBox(height: 17),
           for (final service in services)
-            Container(
-              margin: const EdgeInsets.only(bottom: 11),
-              padding: const EdgeInsets.all(15),
-              decoration: BoxDecoration(
-                color: Colors.white,
+            Material(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              child: InkWell(
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFDFEEE4)),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 46,
-                    height: 46,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE8FFF0),
-                      borderRadius: BorderRadius.circular(13),
-                    ),
-                    child: Icon(
-                      service.icon,
-                      color: _green,
-                      size: 23,
-                    ),
+                onTap: service.title == 'E-Surat' ? onOpenESurat : null,
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 11),
+                  padding: const EdgeInsets.all(15),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFDFEEE4)),
                   ),
-                  const SizedBox(width: 13),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          service.title,
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            color: _text,
-                          ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 46,
+                        height: 46,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE8FFF0),
+                          borderRadius: BorderRadius.circular(13),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          service.description,
-                          style: GoogleFonts.inter(
-                            fontSize: 10,
-                            color: _muted,
-                          ),
+                        child: Icon(
+                          service.icon,
+                          color: _green,
+                          size: 23,
                         ),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(width: 13),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              service.title,
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                color: _text,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              service.description,
+                              style: GoogleFonts.inter(
+                                fontSize: 10,
+                                color: _muted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        color: _muted,
+                      ),
+                    ],
                   ),
-                  const Icon(
-                    Icons.chevron_right_rounded,
-                    color: _muted,
-                  ),
-                ],
+                ),
               ),
             ),
           const SizedBox(height: 5),
