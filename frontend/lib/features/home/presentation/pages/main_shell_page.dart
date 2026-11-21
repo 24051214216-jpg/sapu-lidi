@@ -7,6 +7,7 @@ import '../../../finance/presentation/pages/finance_page.dart';
 import '../../../inventory/presentation/pages/inventory_catalog_page.dart';
 import '../../../e_letter/presentation/pages/letter_request_page.dart';
 import '../../../guest_book/presentation/pages/guest_book_page.dart';
+import '../../../aspiration/presentation/pages/aspirasi_page.dart';
 import 'home_page.dart';
 
 class MainShellPage extends StatefulWidget {
@@ -120,11 +121,28 @@ class _MainShellPageState extends State<MainShellPage> {
     );
   }
 
+  // Membuka halaman Lapor Tamu.
   void _openGuestBook() {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => GuestBookPage(user: _user),
+      ),
+    );
+  }
+
+  // Membuka halaman Aspirasi Warga.
+  void _openAspirasi() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AspirasiPage(
+          onSos: _showSosDialog,
+          onNavigateRoot: (index) {
+            Navigator.pop(context);
+            _navigateTo(index);
+          },
+        ),
       ),
     );
   }
@@ -200,6 +218,7 @@ class _MainShellPageState extends State<MainShellPage> {
         return _ServicesPage(
           onOpenESurat: _openESurat,
           onOpenGuestBook: _openGuestBook,
+          onOpenAspirasi: _openAspirasi,
         );
 
       case 4:
@@ -558,10 +577,12 @@ class _ServicesPage extends StatelessWidget {
   const _ServicesPage({
     required this.onOpenESurat,
     required this.onOpenGuestBook,
+    required this.onOpenAspirasi,
   });
 
   final VoidCallback onOpenESurat;
   final VoidCallback onOpenGuestBook;
+  final VoidCallback onOpenAspirasi;
 
   static const Color _green = Color(0xFF107C41);
   static const Color _text = Color(0xFF17251C);
@@ -575,24 +596,28 @@ class _ServicesPage extends StatelessWidget {
         title: 'E-Surat',
         description: 'Pengajuan surat administrasi warga.',
         onTap: onOpenESurat,
+        isLocked: false,
       ),
       (
         icon: Icons.handyman_outlined,
         title: 'Pinjam Alat',
         description: 'Informasi peminjaman barang bersama.',
         onTap: null,
+        isLocked: true,
       ),
       (
         icon: Icons.person_search_outlined,
         title: 'Lapor Tamu',
         description: 'Pelaporan informasi tamu lingkungan.',
         onTap: onOpenGuestBook,
+        isLocked: false,
       ),
       (
         icon: Icons.forum_outlined,
         title: 'Aspirasi',
         description: 'Sampaikan saran dan masukan warga.',
-        onTap: null,
+        onTap: onOpenAspirasi,
+        isLocked: false,
       ),
     ];
 
@@ -666,7 +691,7 @@ class _ServicesPage extends StatelessWidget {
                           ),
                         ),
                         Icon(
-                          service.onTap == null
+                          service.isLocked
                               ? Icons.lock_outline_rounded
                               : Icons.chevron_right_rounded,
                           color: _muted,
