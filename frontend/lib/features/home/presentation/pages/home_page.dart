@@ -7,11 +7,13 @@ class HomePage extends StatelessWidget {
     required this.user,
     required this.onNavigate,
     required this.onSos,
+    required this.onOpenBerita, // ✅ Tambahan parameter
   });
 
   final Map<String, dynamic> user;
   final ValueChanged<int> onNavigate;
   final VoidCallback onSos;
+  final VoidCallback onOpenBerita; // ✅ Tambahan properti
 
   static const Color _green = Color(0xFF107C41);
   static const Color _greenDark = Color(0xFF084C27);
@@ -82,10 +84,10 @@ class HomePage extends StatelessWidget {
                   'Warta Terkini',
                   'Informasi terbaru lingkungan',
                   trailing: 'Lihat semua',
-                  onTrailingTap: () => onNavigate(3),
+                  onTrailingTap: onOpenBerita, // ✅ Diubah ke onOpenBerita
                 ),
                 const SizedBox(height: 14),
-                _buildNewsEmpty(),
+                _buildNewsPreview(), // ✅ Diubah ke _buildNewsPreview
                 const SizedBox(height: 23),
                 _buildCommunitySlogan(),
               ],
@@ -807,57 +809,129 @@ class HomePage extends StatelessWidget {
     );
   }
 
-  Widget _buildNewsEmpty() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE5EEE8)),
+  // ✅ Method Baru: _buildNewsPreview() menggantikan _buildNewsEmpty()
+  Widget _buildNewsPreview() {
+    final news = [
+      (
+        category: 'PENGUMUMAN RT',
+        title: 'Fogging Serentak & Pemeriksaan Jentik Nyamuk DBD',
+        description:
+            'Seluruh warga dimohon membuka ventilasi rumah saat kegiatan fogging berlangsung.',
+        icon: Icons.campaign_rounded,
       ),
-      child: Row(
-        children: [
-          Container(
-            width: 43,
-            height: 43,
-            decoration: BoxDecoration(
-              color: _mint,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(
-              Icons.newspaper_rounded,
-              color: _green,
-              size: 22,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Belum ada warta warga',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    color: _text,
+      (
+        category: 'KEAMANAN',
+        title: 'Penambahan Akses Kartu RFID Portal Masuk',
+        description:
+            'Setiap kepala keluarga berhak mendapatkan dua kartu akses gratis.',
+        icon: Icons.security_rounded,
+      ),
+    ];
+
+    return Column(
+      children: [
+        for (final item in news)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Material(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              child: InkWell(
+                onTap: onOpenBerita,
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: const Color(0xFFE5EEE8),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 43,
+                        height: 43,
+                        decoration: BoxDecoration(
+                          color: _mint,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          item.icon,
+                          color: _green,
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item.category,
+                              style: GoogleFonts.inter(
+                                fontSize: 8,
+                                fontWeight: FontWeight.w800,
+                                color: _green,
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            Text(
+                              item.title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: _text,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              item.description,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.inter(
+                                fontSize: 9,
+                                height: 1.4,
+                                color: _muted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        color: _muted,
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'Informasi dan berita lingkungan akan muncul di sini.',
-                  style: GoogleFonts.inter(
-                    fontSize: 9,
-                    height: 1.5,
-                    color: _muted,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
-        ],
-      ),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton(
+            onPressed: onOpenBerita,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: _green,
+              side: const BorderSide(color: _border),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: Text(
+              'Lihat Semua Warta',
+              style: GoogleFonts.inter(
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

@@ -8,6 +8,7 @@ import '../../../inventory/presentation/pages/inventory_catalog_page.dart';
 import '../../../e_letter/presentation/pages/letter_request_page.dart';
 import '../../../guest_book/presentation/pages/guest_book_page.dart';
 import '../../../aspiration/presentation/pages/aspirasi_page.dart';
+import '../../../news/presentation/pages/berita_page.dart';
 import 'home_page.dart';
 
 class MainShellPage extends StatefulWidget {
@@ -121,7 +122,6 @@ class _MainShellPageState extends State<MainShellPage> {
     );
   }
 
-  // Membuka halaman Lapor Tamu.
   void _openGuestBook() {
     Navigator.push(
       context,
@@ -131,7 +131,6 @@ class _MainShellPageState extends State<MainShellPage> {
     );
   }
 
-  // Membuka halaman Aspirasi Warga.
   void _openAspirasi() {
     Navigator.push(
       context,
@@ -145,6 +144,20 @@ class _MainShellPageState extends State<MainShellPage> {
         ),
       ),
     );
+  }
+
+  void _openBerita() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const BeritaPage(),
+      ),
+    );
+  }
+
+  // ✅ Tambahan: Fungsi navigasi untuk membuka katalog inventaris dari Layanan
+  void _openInventory() {
+    _navigateTo(2);
   }
 
   void _showSosDialog() {
@@ -206,6 +219,7 @@ class _MainShellPageState extends State<MainShellPage> {
           user: _user,
           onNavigate: _navigateTo,
           onSos: _showSosDialog,
+          onOpenBerita: _openBerita, // ✅ Tambahan onOpenBerita
         );
 
       case 1:
@@ -219,6 +233,7 @@ class _MainShellPageState extends State<MainShellPage> {
           onOpenESurat: _openESurat,
           onOpenGuestBook: _openGuestBook,
           onOpenAspirasi: _openAspirasi,
+          onOpenInventory: _openInventory, // ✅ Tambahan onOpenInventory
         );
 
       case 4:
@@ -229,6 +244,7 @@ class _MainShellPageState extends State<MainShellPage> {
           user: _user,
           onNavigate: _navigateTo,
           onSos: _showSosDialog,
+          onOpenBerita: _openBerita, // ✅ Tambahan onOpenBerita di default
         );
     }
   }
@@ -573,16 +589,19 @@ class _MainShellPageState extends State<MainShellPage> {
   }
 }
 
+// ✅ _ServicesPage diganti dengan kode baru Anda
 class _ServicesPage extends StatelessWidget {
   const _ServicesPage({
     required this.onOpenESurat,
     required this.onOpenGuestBook,
     required this.onOpenAspirasi,
+    required this.onOpenInventory,
   });
 
   final VoidCallback onOpenESurat;
   final VoidCallback onOpenGuestBook;
   final VoidCallback onOpenAspirasi;
+  final VoidCallback onOpenInventory;
 
   static const Color _green = Color(0xFF107C41);
   static const Color _text = Color(0xFF17251C);
@@ -596,28 +615,24 @@ class _ServicesPage extends StatelessWidget {
         title: 'E-Surat',
         description: 'Pengajuan surat administrasi warga.',
         onTap: onOpenESurat,
-        isLocked: false,
       ),
       (
         icon: Icons.handyman_outlined,
         title: 'Pinjam Alat',
         description: 'Informasi peminjaman barang bersama.',
-        onTap: null,
-        isLocked: true,
+        onTap: onOpenInventory,
       ),
       (
         icon: Icons.person_search_outlined,
         title: 'Lapor Tamu',
         description: 'Pelaporan informasi tamu lingkungan.',
         onTap: onOpenGuestBook,
-        isLocked: false,
       ),
       (
         icon: Icons.forum_outlined,
         title: 'Aspirasi',
         description: 'Sampaikan saran dan masukan warga.',
         onTap: onOpenAspirasi,
-        isLocked: false,
       ),
     ];
 
@@ -690,10 +705,8 @@ class _ServicesPage extends StatelessWidget {
                             ],
                           ),
                         ),
-                        Icon(
-                          service.isLocked
-                              ? Icons.lock_outline_rounded
-                              : Icons.chevron_right_rounded,
+                        const Icon(
+                          Icons.chevron_right_rounded,
                           color: _muted,
                         ),
                       ],
@@ -713,9 +726,7 @@ class _ServicesPage extends StatelessWidget {
           ),
           const SizedBox(height: 5),
           Text(
-            'Halaman ini menampilkan daftar layanan. '
-            'Pengajuan dan transaksi layanan akan dihubungkan '
-            'dengan proses masing-masing ketika integrasinya tersedia.',
+            'Pilih layanan yang ingin kamu gunakan.',
             style: GoogleFonts.inter(
               fontSize: 10,
               height: 1.5,
