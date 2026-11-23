@@ -9,6 +9,7 @@ import '../../../e_letter/presentation/pages/letter_request_page.dart';
 import '../../../guest_book/presentation/pages/guest_book_page.dart';
 import '../../../aspiration/presentation/pages/aspirasi_page.dart';
 import '../../../news/presentation/pages/berita_page.dart';
+import '../../../emergency/presentation/pages/sos_page.dart';
 import 'home_page.dart';
 
 class MainShellPage extends StatefulWidget {
@@ -113,6 +114,10 @@ class _MainShellPageState extends State<MainShellPage> {
     });
   }
 
+  // ============================================================
+  // NAVIGASI LAYANAN
+  // ============================================================
+
   void _openESurat() {
     Navigator.push(
       context,
@@ -136,7 +141,7 @@ class _MainShellPageState extends State<MainShellPage> {
       context,
       MaterialPageRoute(
         builder: (_) => AspirasiPage(
-          onSos: _showSosDialog,
+          onSos: _openSosPage,
           onNavigateRoot: (index) {
             Navigator.pop(context);
             _navigateTo(index);
@@ -155,45 +160,25 @@ class _MainShellPageState extends State<MainShellPage> {
     );
   }
 
-  // ✅ Tambahan: Fungsi navigasi untuk membuka katalog inventaris dari Layanan
   void _openInventory() {
     _navigateTo(2);
   }
 
-  void _showSosDialog() {
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        icon: const Icon(
-          Icons.sos_rounded,
-          size: 38,
-          color: Color(0xFFC62828),
-        ),
-        title: Text(
-          'Bantuan Darurat',
-          style: GoogleFonts.plusJakartaSans(
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        content: Text(
-          'Fitur kontak darurat lingkungan belum terhubung. '
-          'Jika terjadi keadaan darurat, segera hubungi layanan '
-          'darurat resmi yang sesuai dengan kondisi kamu.',
-          style: GoogleFonts.inter(
-            fontSize: 12,
-            height: 1.6,
-            color: _muted,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Tutup'),
-          ),
-        ],
+  // ============================================================
+  // NAVIGASI SOS
+  // ============================================================
+
+  void _openSosPage() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const SosPage(),
       ),
     );
   }
+
+  // ============================================================
+  // JUDUL HALAMAN
+  // ============================================================
 
   String get _pageTitle {
     switch (_selectedIndex) {
@@ -212,14 +197,18 @@ class _MainShellPageState extends State<MainShellPage> {
     }
   }
 
+  // ============================================================
+  // HALAMAN UTAMA
+  // ============================================================
+
   Widget _buildCurrentPage() {
     switch (_selectedIndex) {
       case 0:
         return HomePage(
           user: _user,
           onNavigate: _navigateTo,
-          onSos: _showSosDialog,
-          onOpenBerita: _openBerita, // ✅ Tambahan onOpenBerita
+          onSos: _openSosPage,
+          onOpenBerita: _openBerita,
         );
 
       case 1:
@@ -233,7 +222,7 @@ class _MainShellPageState extends State<MainShellPage> {
           onOpenESurat: _openESurat,
           onOpenGuestBook: _openGuestBook,
           onOpenAspirasi: _openAspirasi,
-          onOpenInventory: _openInventory, // ✅ Tambahan onOpenInventory
+          onOpenInventory: _openInventory,
         );
 
       case 4:
@@ -243,11 +232,15 @@ class _MainShellPageState extends State<MainShellPage> {
         return HomePage(
           user: _user,
           onNavigate: _navigateTo,
-          onSos: _showSosDialog,
-          onOpenBerita: _openBerita, // ✅ Tambahan onOpenBerita di default
+          onSos: _openSosPage,
+          onOpenBerita: _openBerita,
         );
     }
   }
+
+  // ============================================================
+  // HEADER
+  // ============================================================
 
   Widget _buildPageHeader() {
     if (_selectedIndex == 0) {
@@ -295,6 +288,10 @@ class _MainShellPageState extends State<MainShellPage> {
       ),
     );
   }
+
+  // ============================================================
+  // PROFIL
+  // ============================================================
 
   Widget _buildProfile() {
     final nama = _user['nama']?.toString().trim().isNotEmpty == true
@@ -386,7 +383,9 @@ class _MainShellPageState extends State<MainShellPage> {
             label: const Text('Keluar dari Akun'),
             style: OutlinedButton.styleFrom(
               foregroundColor: Colors.red,
-              side: const BorderSide(color: Color(0xFFE9B7B7)),
+              side: const BorderSide(
+                color: Color(0xFFE9B7B7),
+              ),
               padding: const EdgeInsets.symmetric(vertical: 15),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(13),
@@ -442,6 +441,10 @@ class _MainShellPageState extends State<MainShellPage> {
     );
   }
 
+  // ============================================================
+  // BOTTOM NAVIGATION ITEM
+  // ============================================================
+
   Widget _buildNavItem({
     required IconData icon,
     required IconData selectedIcon,
@@ -479,6 +482,11 @@ class _MainShellPageState extends State<MainShellPage> {
     );
   }
 
+  // ============================================================
+  // BOTTOM NAVIGATION
+  // Urutan: Beranda - Keuangan - SOS - Inventaris - Layanan
+  // ============================================================
+
   Widget _buildBottomNavigation() {
     return Container(
       decoration: BoxDecoration(
@@ -509,9 +517,11 @@ class _MainShellPageState extends State<MainShellPage> {
                 label: 'Keuangan',
                 index: 1,
               ),
+
+              // Tombol SOS
               Expanded(
                 child: InkWell(
-                  onTap: _showSosDialog,
+                  onTap: _openSosPage,
                   child: SizedBox(
                     height: 67,
                     child: Column(
@@ -543,6 +553,7 @@ class _MainShellPageState extends State<MainShellPage> {
                   ),
                 ),
               ),
+
               _buildNavItem(
                 icon: Icons.inventory_2_outlined,
                 selectedIcon: Icons.inventory_2_rounded,
@@ -562,13 +573,19 @@ class _MainShellPageState extends State<MainShellPage> {
     );
   }
 
+  // ============================================================
+  // BUILD
+  // ============================================================
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const Scaffold(
         backgroundColor: _background,
         body: Center(
-          child: CircularProgressIndicator(color: _green),
+          child: CircularProgressIndicator(
+            color: _green,
+          ),
         ),
       );
     }
@@ -580,7 +597,9 @@ class _MainShellPageState extends State<MainShellPage> {
         child: Column(
           children: [
             _buildPageHeader(),
-            Expanded(child: _buildCurrentPage()),
+            Expanded(
+              child: _buildCurrentPage(),
+            ),
           ],
         ),
       ),
@@ -589,7 +608,10 @@ class _MainShellPageState extends State<MainShellPage> {
   }
 }
 
-// ✅ _ServicesPage diganti dengan kode baru Anda
+// ============================================================
+// HALAMAN LAYANAN
+// ============================================================
+
 class _ServicesPage extends StatelessWidget {
   const _ServicesPage({
     required this.onOpenESurat,
