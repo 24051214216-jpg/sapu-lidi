@@ -130,6 +130,86 @@ class AuthRemoteDataSource {
     return session;
   }
 
+  // Meminta OTP untuk proses reset password.
+  Future<int> requestPasswordResetOtp({
+    required String noHp,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.requestOtp,
+      data: {
+        'noHp': noHp,
+        'purpose': 'RESET_PASSWORD',
+      },
+    );
+
+    final body = _readBody(response.data);
+
+    if (body['success'] != true) {
+      throw Exception(
+        body['message']?.toString() ??
+            'Gagal mengirim OTP untuk reset password.',
+      );
+    }
+
+    return int.tryParse(body['expiresIn']?.toString() ?? '') ?? 300;
+  }
+
+  // Memverifikasi OTP reset password dan mengambil resetToken.
+  Future<String> verifyPasswordResetOtp({
+    required String noHp,
+    required String otp,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.verifyOtp,
+      data: {
+        'noHp': noHp,
+        'purpose': 'RESET_PASSWORD',
+        'otp': otp,
+      },
+    );
+
+    final body = _readBody(response.data);
+    final data = _readData(body);
+
+    if (body['success'] != true) {
+      throw Exception(
+        body['message']?.toString() ?? 'Verifikasi OTP reset password gagal.',
+      );
+    }
+
+    final resetToken = data['resetToken']?.toString();
+
+    if (resetToken == null || resetToken.isEmpty) {
+      throw Exception(
+        'Server tidak mengembalikan token untuk reset password.',
+      );
+    }
+
+    return resetToken;
+  }
+
+  // Mengirim password baru menggunakan resetToken.
+  Future<void> resetPassword({
+    required String resetToken,
+    required String newPassword,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.resetPassword,
+      data: {
+        'resetToken': resetToken,
+        'newPassword': newPassword,
+      },
+    );
+
+    final body = _readBody(response.data);
+
+    if (body['success'] != true) {
+      throw Exception(
+        body['message']?.toString() ?? 'Password gagal diperbarui.',
+      );
+    }
+  }
+
   Map<String, dynamic> _readBody(dynamic responseData) {
     if (responseData is Map<String, dynamic>) {
       return responseData;

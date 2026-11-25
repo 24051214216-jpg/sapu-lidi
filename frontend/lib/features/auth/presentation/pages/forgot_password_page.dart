@@ -1,7 +1,12 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../../core/network/dio_client.dart';
 import '../../../../core/widgets/app_primary_button.dart';
+import '../../data/datasources/auth_remote_datasource.dart';
+import 'reset_password_page.dart';
 
 class ForgotPasswordPage extends StatefulWidget {
   const ForgotPasswordPage({super.key});
@@ -18,14 +23,43 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
 
   final _formKey = GlobalKey<FormState>();
   final _phoneController = TextEditingController();
+  final _otpController = TextEditingController();
+
+  late final AuthRemoteDataSource _authRemoteDataSource;
 
   bool _isLoading = false;
-  bool _linkSent = false;
+  bool _otpSent = false;
+
+  int _expiresIn = 300;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _authRemoteDataSource = AuthRemoteDataSource(
+      DioClient.create(),
+    );
+  }
 
   @override
   void dispose() {
     _phoneController.dispose();
+    _otpController.dispose();
     super.dispose();
+  }
+
+  String _normalizePhone(String value) {
+    var digits = value.replaceAll(RegExp(r'\D'), '');
+
+    if (digits.startsWith('0')) {
+      digits = digits.substring(1);
+    }
+
+    if (digits.startsWith('62')) {
+      return '+$digits';
+    }
+
+    return '+62$digits';
   }
 
   String? _validatePhone(String? value) {
@@ -42,23 +76,145 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     return null;
   }
 
-  Future<void> _sendResetLink() async {
+  String? _validateOtp(String? value) {
+    final otp = value?.trim() ?? '';
+
+    if (otp.isEmpty) {
+      return 'Kode OTP wajib diisi';
+    }
+
+    if (!RegExp(r'^\d{6}$').hasMatch(otp)) {
+      return 'Kode OTP harus terdiri dari 6 angka';
+    }
+
+    return null;
+  }
+
+  Future<void> _requestResetOtp() async {
     FocusScope.of(context).unfocus();
 
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
 
-    // TODO: Hubungkan dengan API forgot password.
-    // Backend nantinya mengirim tautan reset melalui WhatsApp.
-    await Future.delayed(const Duration(milliseconds: 900));
+    try {
+      final noHp = _normalizePhone(_phoneController.text);
 
-    if (!mounted) return;
+      final expiresIn = await _authRemoteDataSource.requestPasswordResetOtp(
+        noHp: noHp,
+      );
 
-    setState(() {
-      _isLoading = false;
-      _linkSent = true;
-    });
+      if (!mounted) return;
+
+      setState(() {
+        _expiresIn = expiresIn;
+        _otpSent = true;
+        _isLoading = false;
+      });
+
+      _showMessage(
+        'Jika nomor terdaftar, kode OTP akan dikirim melalui WhatsApp.',
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() => _isLoading = false);
+      _showError(error);
+    }
+  }
+
+  Future<void> _resendOtp() async {
+    if (_isLoading) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final noHp = _normalizePhone(_phoneController.text);
+
+      final expiresIn = await _authRemoteDataSource.requestPasswordResetOtp(
+        noHp: noHp,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _expiresIn = expiresIn;
+        _otpController.clear();
+        _isLoading = false;
+      });
+
+      _showMessage('Permintaan OTP berhasil diproses.');
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() => _isLoading = false);
+      _showError(error);
+    }
+  }
+
+  Future<void> _verifyOtp() async {
+    FocusScope.of(context).unfocus();
+
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final noHp = _normalizePhone(_phoneController.text);
+
+      final resetToken = await _authRemoteDataSource.verifyPasswordResetOtp(
+        noHp: noHp,
+        otp: _otpController.text.trim(),
+      );
+
+      if (!mounted) return;
+
+      setState(() => _isLoading = false);
+
+      final result = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ResetPasswordPage(
+            resetToken: resetToken,
+          ),
+        ),
+      );
+
+      if (!mounted) return;
+
+      if (result == true) {
+        Navigator.pop(context);
+      }
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() => _isLoading = false);
+      _showError(error);
+    }
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  void _showError(Object error) {
+    String message = 'Terjadi kesalahan. Silakan coba kembali.';
+
+    if (error is DioException) {
+      final responseData = error.response?.data;
+
+      if (responseData is Map) {
+        message = responseData['message']?.toString() ?? message;
+      } else if (error.message != null) {
+        message = error.message!;
+      }
+    } else {
+      message = error.toString().replaceFirst('Exception: ', '');
+    }
+
+    _showMessage(message);
   }
 
   void _backToLogin() {
@@ -69,7 +225,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text(
-          'Kontak WhatsApp pengurus RT belum dikonfigurasi.',
+          'Silakan hubungi Ketua RT atau pengurus untuk mendapatkan bantuan.',
         ),
       ),
     );
@@ -99,7 +255,9 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
               ),
               const SizedBox(height: 10),
               Text(
-                'Jangan khawatir! Masukkan nomor HP yang terdaftar. Kami akan membantu Anda mengatur ulang kata sandi.',
+                _otpSent
+                    ? 'Masukkan kode OTP 6 digit yang dikirimkan ke WhatsApp Anda untuk melanjutkan pengaturan ulang password.'
+                    : 'Jangan khawatir! Masukkan nomor HP yang terdaftar. Kami akan membantu Anda mengatur ulang kata sandi.',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.inter(
                   fontSize: 12,
@@ -108,7 +266,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                 ),
               ),
               const SizedBox(height: 28),
-              if (_linkSent) _buildSuccessCard() else _buildResetForm(),
+              _buildResetForm(),
               const SizedBox(height: 22),
               _buildHelpCard(),
               const SizedBox(height: 20),
@@ -308,14 +466,50 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
             ),
             const SizedBox(height: 10),
             _buildPhoneField(),
-            const SizedBox(height: 14),
-            _buildInfoBox(),
+            if (_otpSent) ...[
+              const SizedBox(height: 22),
+              Text(
+                'Kode Verifikasi OTP',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: _text,
+                ),
+              ),
+              const SizedBox(height: 10),
+              _buildOtpField(),
+              const SizedBox(height: 10),
+              Text(
+                'Kode OTP berlaku sekitar ${(_expiresIn / 60).ceil()} menit.',
+                style: GoogleFonts.inter(
+                  fontSize: 10,
+                  color: _muted,
+                ),
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: _isLoading ? null : _resendOtp,
+                  child: Text(
+                    'Kirim Ulang OTP',
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: _green,
+                    ),
+                  ),
+                ),
+              ),
+            ] else ...[
+              const SizedBox(height: 14),
+              _buildInfoBox(),
+            ],
             const SizedBox(height: 22),
             AppPrimaryButton(
-              label: 'Kirim Link Reset',
-              icon: Icons.send_rounded,
+              label: _otpSent ? 'Verifikasi OTP' : 'Kirim Kode OTP',
+              icon: _otpSent ? Icons.verified_rounded : Icons.send_rounded,
               isLoading: _isLoading,
-              onPressed: _sendResetLink,
+              onPressed: _otpSent ? _verifyOtp : _requestResetOtp,
             ),
           ],
         ),
@@ -350,6 +544,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
           Expanded(
             child: TextFormField(
               controller: _phoneController,
+              enabled: !_otpSent && !_isLoading,
               keyboardType: TextInputType.phone,
               validator: _validatePhone,
               style: GoogleFonts.inter(
@@ -369,9 +564,8 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                 ),
                 suffixIcon: IconButton(
                   tooltip: 'Hapus nomor',
-                  onPressed: () {
-                    _phoneController.clear();
-                  },
+                  onPressed:
+                      _otpSent || _isLoading ? null : _phoneController.clear,
                   icon: const Icon(
                     Icons.close_rounded,
                     size: 18,
@@ -382,6 +576,51 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildOtpField() {
+    return TextFormField(
+      controller: _otpController,
+      keyboardType: TextInputType.number,
+      textAlign: TextAlign.center,
+      maxLength: 6,
+      validator: _validateOtp,
+      inputFormatters: [
+        FilteringTextInputFormatter.digitsOnly,
+        LengthLimitingTextInputFormatter(6),
+      ],
+      style: GoogleFonts.inter(
+        fontSize: 22,
+        fontWeight: FontWeight.w800,
+        letterSpacing: 12,
+        color: _green,
+      ),
+      decoration: InputDecoration(
+        hintText: '000000',
+        counterText: '',
+        hintStyle: GoogleFonts.inter(
+          fontSize: 18,
+          letterSpacing: 8,
+          color: const Color(0xFFBECABD),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 15,
+          vertical: 15,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Color(0xFFBECABD)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Color(0xFFBECABD)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: _green, width: 1.5),
+        ),
       ),
     );
   }
@@ -405,100 +644,13 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Tautan rahasia untuk mengatur ulang password akan dikirim melalui WhatsApp resmi RT dan berlaku selama 15 menit.',
+              'Kode OTP untuk mengatur ulang password akan dikirim melalui WhatsApp. Masukkan kode tersebut untuk melanjutkan.',
               style: GoogleFonts.inter(
                 fontSize: 10,
                 height: 1.6,
                 color: const Color(0xFF315C40),
               ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSuccessCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: _green.withValues(alpha: 0.06),
-            blurRadius: 25,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Container(
-            width: 72,
-            height: 72,
-            decoration: const BoxDecoration(
-              color: Color(0xFFEAF7ED),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.mark_email_read_rounded,
-              size: 38,
-              color: _green,
-            ),
-          ),
-          const SizedBox(height: 18),
-          Text(
-            'Tautan Terkirim!',
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 21,
-              fontWeight: FontWeight.w800,
-              color: _text,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Jika nomor tersebut terdaftar, instruksi pengaturan ulang password akan dikirim ke WhatsApp:',
-            textAlign: TextAlign.center,
-            style: GoogleFonts.inter(
-              fontSize: 12,
-              height: 1.6,
-              color: _muted,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            '+62 ${_phoneController.text.trim()}',
-            style: GoogleFonts.inter(
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-              color: _green,
-            ),
-          ),
-          const SizedBox(height: 18),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(13),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFF8ED),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              'Periksa pesan WhatsApp Anda. Tautan reset memiliki masa berlaku 15 menit.',
-              textAlign: TextAlign.center,
-              style: GoogleFonts.inter(
-                fontSize: 11,
-                height: 1.5,
-                color: const Color(0xFF80521C),
-              ),
-            ),
-          ),
-          const SizedBox(height: 22),
-          AppPrimaryButton(
-            label: 'Selesai & Masuk',
-            icon: Icons.arrow_forward_rounded,
-            onPressed: _backToLogin,
           ),
         ],
       ),
